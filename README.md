@@ -39,6 +39,7 @@ When you use `/ml-intern`, the agent:
 |------|-------------|
 | `plan_tool` | Track ML task progress (pending/in_progress/completed) |
 | `hf_papers` | Paper search, citation graphs, methodology section reading |
+| `hf_jobs` | Submit & manage remote GPU/CPU compute jobs on HF Cloud |
 | `hub_repo_details` | HF Hub model/dataset/space details and search |
 | `hf_inspect_dataset` | Dataset schema, splits, and sample inspection |
 | `github_find_examples` | Find working ML example scripts in GitHub repos |
