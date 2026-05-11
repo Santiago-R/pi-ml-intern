@@ -1,0 +1,53 @@
+{
+  "name": "@earendil-works/pi-ml-intern",
+  "version": "0.1.0",
+  "description": "ML Intern extension for Pi — autonomous ML research & implementation with literature-backed recipes. Inspired by Hugging Face's ml-intern.",
+  "license": "MIT",
+  "author": "Pi community",
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "ml-intern",
+    "machine-learning",
+    "hugging-face",
+    "fine-tuning",
+    "training",
+    "ai-agent",
+    "coding-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/earendil-works/pi-ml-intern.git"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "files": [
+    "index.ts",
+    "prompts.ts",
+    "tools/",
+    "utils/",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  },
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bugs": {
+    "url": "https://github.com/earendil-works/pi-ml-intern/issues"
+  },
+  "homepage": "https://github.com/earendil-works/pi-ml-intern#readme",
+  "devDependencies": {
+    "@types/node": "^25.6.2"
+  }
+}
