@@ -4,8 +4,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
-import { fetchWithRetry, ok, err } from "../utils/api";
+import { fetchWithRetry, ok, err, StringEnum } from "../utils/api";
 
 const S2 = "https://api.semanticscholar.org/graph/v1/paper";
 const S2_RECOMMEND = "https://api.semanticscholar.org/recommendations/v1/papers/forpaper";

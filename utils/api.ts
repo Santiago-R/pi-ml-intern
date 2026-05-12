@@ -91,3 +91,19 @@ export function ghHeaders(): Record<string, string> {
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+// ── Inlined from @earendil-works/pi-ai ──
+
+import { Type } from "typebox";
+
+export function StringEnum<T extends readonly string[]>(
+  values: T,
+  options?: { description?: string; default?: T[number] },
+) {
+  return Type.Unsafe({
+    type: "string",
+    enum: values,
+    ...(options?.description && { description: options.description }),
+    ...(options?.default && { default: options.default }),
+  });
+}

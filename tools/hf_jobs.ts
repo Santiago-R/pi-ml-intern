@@ -11,8 +11,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
-import { fetchWithRetry, ok, err, hfHeaders } from "../utils/api";
+import { fetchWithRetry, ok, err, hfHeaders, StringEnum } from "../utils/api";
 
 const HF_API = "https://huggingface.co/api";
 
