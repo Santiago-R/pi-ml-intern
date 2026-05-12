@@ -2,21 +2,23 @@
 
 ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — autonomous ML research & implementation with literature-backed recipes. Heavily inspired by [Hugging Face's ml-intern](https://github.com/huggingface/ml-intern).
 
+[![npm](https://img.shields.io/npm/v/@santiago-r/pi-ml-intern)](https://www.npmjs.com/package/@santiago-r/pi-ml-intern) [![GitHub](https://img.shields.io/badge/github-Santiago--R%2Fpi--ml--intern-blue)](https://github.com/Santiago-R/pi-ml-intern)
+
 Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's default behavior.
 
-> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.1). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
+> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.2). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
 
 ## Quick Start
 
 ### Install
 
 ```bash
-pi install @santiago-r/pi-ml-intern
+pi install npm:@santiago-r/pi-ml-intern
 ```
 
 Or manually: copy this directory to `~/.pi/agent/extensions/ml-intern/` (global) or `.pi/extensions/ml-intern/` (project-local).
 
-### Use
+### Usage examples
 
 ```
 /ml-intern fine-tune Qwen2.5 on my instruction dataset
@@ -24,7 +26,7 @@ Or manually: copy this directory to `~/.pi/agent/extensions/ml-intern/` (global)
 /ml-intern research the best LoRA recipe for code generation
 ```
 
-Type `/ml-intern` followed by your ML task. The extension injects ml-intern's comprehensive system prompt for that turn, then returns to normal Pi behavior.
+Type `/ml-intern` followed by your ML task. The extension uses ml-intern's tools and system prompt for that turn, then returns to normal Pi behavior.
 
 ## What it does
 
@@ -32,7 +34,7 @@ When you use `/ml-intern`, the agent:
 
 1. **Researches first** — finds landmark papers, crawls citation graphs, reads methodology sections
 2. **Validates resources** — checks dataset schemas, model architectures, API compatibility
-3. **Implements** — includes prompting against hallucinated imports, wrong arguments, silent substitutions
+3. **Implements** — includes instructions against hallucinated imports, wrong arguments, and silent substitutions
 4. **Tracks progress** — uses `plan_tool` for tasks with 3+ steps
 
 ## Tools included

@@ -1,6 +1,6 @@
 {
   "name": "@santiago-r/pi-ml-intern",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ML Intern extension for Pi — autonomous ML research & implementation with literature-backed recipes. Inspired by Hugging Face's ml-intern.",
   "license": "Apache-2.0",
   "author": "Santiago-R",
@@ -32,10 +32,6 @@
     "README.md",
     "LICENSE"
   ],
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*",
-    "typebox": "*"
-  },
   "dependencies": {},
 
   "scripts": {
