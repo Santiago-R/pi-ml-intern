@@ -4,7 +4,7 @@ ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — auto
 
 Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's default behavior.
 
-> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.0). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
+> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.1). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
 
 ## Quick Start
 
