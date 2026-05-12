@@ -32,6 +32,10 @@
     "README.md",
     "LICENSE"
   ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
   "dependencies": {},
 
   "scripts": {
