@@ -32,7 +32,7 @@ When you use `/ml-intern`, the agent:
 
 1. **Researches first** — finds landmark papers, crawls citation graphs, reads methodology sections
 2. **Validates resources** — checks dataset schemas, model architectures, API compatibility
-3. **Implements with zero errors** — avoids hallucinated imports, wrong arguments, silent substitutions
+3. **Implements** — includes prompting against hallucinated imports, wrong arguments, silent substitutions
 4. **Tracks progress** — uses `plan_tool` for tasks with 3+ steps
 
 ## Tools included
