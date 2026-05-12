@@ -4,12 +4,14 @@ ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — auto
 
 Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's default behavior.
 
+> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.0). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
+
 ## Quick Start
 
 ### Install
 
 ```bash
-pi install @earendil-works/pi-ml-intern
+pi install @santiago-r/pi-ml-intern
 ```
 
 Or manually: copy this directory to `~/.pi/agent/extensions/ml-intern/` (global) or `.pi/extensions/ml-intern/` (project-local).

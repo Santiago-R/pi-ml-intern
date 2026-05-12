@@ -1,11 +1,11 @@
 {
-  "name": "@earendil-works/pi-ml-intern",
+  "name": "@santiago-r/pi-ml-intern",
   "version": "0.1.0",
   "description": "ML Intern extension for Pi — autonomous ML research & implementation with literature-backed recipes. Inspired by Hugging Face's ml-intern.",
-  "license": "MIT",
-  "author": "Pi community",
+  "license": "Apache-2.0",
+  "author": "Santiago-R",
   "keywords": [
-    "pi",
+    "pi-package",
     "pi-extension",
     "ml-intern",
     "machine-learning",
@@ -17,7 +17,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/earendil-works/pi-ml-intern.git"
+    "url": "git+https://github.com/Santiago-R/pi-ml-intern.git"
   },
   "pi": {
     "extensions": [
@@ -33,20 +33,19 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
-  },
-  "dependencies": {
     "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   },
-  "main": "index.js",
+  "dependencies": {},
+
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bugs": {
-    "url": "https://github.com/earendil-works/pi-ml-intern/issues"
+    "url": "https://github.com/Santiago-R/pi-ml-intern/issues"
   },
-  "homepage": "https://github.com/earendil-works/pi-ml-intern#readme",
+  "homepage": "https://github.com/Santiago-R/pi-ml-intern#readme",
   "devDependencies": {
     "@types/node": "^25.6.2"
   }
