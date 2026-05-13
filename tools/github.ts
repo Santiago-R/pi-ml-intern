@@ -37,11 +37,17 @@ export function registerGithubTools(pi: ExtensionAPI) {
 
         const dirs = ["examples", "scripts", "tutorials", "recipes", "notebooks", "docs/source/en/tutorials"];
         const results: Array<{ path: string; name: string; url: string }> = [];
+        let lastError = "";
+        let lastStatus = 0;
 
         for (const d of dirs) {
           try {
             const res = await fetchWithRetry(`${GH}/repos/${org}/${repo}/contents/${d}`, { headers, timeoutMs: 10_000 });
-            if (!res.ok) continue;
+            if (!res.ok) {
+              lastStatus = res.status;
+              lastError = `GitHub API ${res.status} on ${org}/${repo}/contents/${d}`;
+              continue;
+            }
             const files = await res.json();
             if (!Array.isArray(files)) continue;
             for (const f of files) {
@@ -49,7 +55,7 @@ export function registerGithubTools(pi: ExtensionAPI) {
                 results.push({ path: f.path, name: f.name, url: f.html_url });
               }
             }
-          } catch { /* skip unavailable dirs */ }
+          } catch (e) { lastError = String(e); /* skip unavailable dirs */ }
         }
 
         if (kw) {
@@ -61,11 +67,27 @@ export function registerGithubTools(pi: ExtensionAPI) {
             if (res.ok) {
               const sd = await res.json();
               for (const i of sd.items || []) results.push({ path: i.path, name: i.name, url: i.html_url });
+            } else {
+              lastStatus = res.status;
             }
-          } catch { /* search API can be flaky */ }
+          } catch (e) { lastError = String(e); /* search API can be flaky */ }
         }
 
+        // If ALL calls returned errors (no results at all), report the error
         if (!results.length) {
+          if (lastStatus === 403 || lastStatus === 429) {
+            return err(
+              `GitHub API rate limited (HTTP ${lastStatus}). ` +
+              `Set GITHUB_TOKEN in your environment for higher limits, or browse manually:\n` +
+              `https://github.com/${org}/${repo}`
+            );
+          }
+          if (lastError && lastStatus >= 400) {
+            return err(
+              `GitHub API error (HTTP ${lastStatus}): ${lastError}. Browse manually:\n` +
+              `https://github.com/${org}/${repo}`
+            );
+          }
           return ok(
             `No examples found in ${org}/${repo}${kw ? ` for '${kw}'` : ""}\nBrowse: https://github.com/${org}/${repo}`,
           );

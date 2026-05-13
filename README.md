@@ -6,7 +6,7 @@ ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — auto
 
 Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's default behavior.
 
-> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.3). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
+> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.5). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
 
 ## Quick Start
 
@@ -72,11 +72,33 @@ User types: /ml-intern fine-tune llama on ultrachat
          Next turn: flag resets → Pi back to normal
 ```
 
+## Modes of Operation
+
+### 1. Interactive Mode (TUI)
+Use `/ml-intern <task>` inside the Pi TUI. Tools activate for one turn only.
+
+### 2. Print Mode (CLI)
+Set `ML_INTERN_FORCE=1` to run ml-intern in headless mode:
+```bash
+ML_INTERN_FORCE=1 pi -p "fine-tune a model on my_data.jsonl"
+```
+
+### 3. Sub-Agent Mode
+Internal — used by the `research` tool. Enabled via `ML_INTERN_SUBAGENT=1`.
+
+## Automatic .env Loading
+
+The extension auto-loads `HF_TOKEN` and `GITHUB_TOKEN` from:
+1. `.env` in the current working directory
+2. `/home/san/Desktop/ml-intern/.env`
+
+No manual `export` needed.
+
 ## Requirements
 
 - **Pi** (coding agent harness)
-- Optional: `HF_TOKEN` (for private/gated HF Hub datasets)
-- Optional: `GITHUB_TOKEN` (for higher GitHub API rate limits)
+- Optional: `HF_TOKEN` (for private/gated HF Hub datasets) — auto-loaded from .env
+- Optional: `GITHUB_TOKEN` (for higher GitHub API rate limits) — auto-loaded from .env
 
 ## Attribution
 

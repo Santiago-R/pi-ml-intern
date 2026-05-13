@@ -180,6 +180,9 @@ export function registerHfPapersTool(pi: ExtensionAPI) {
 
 async function fetchJson(url: string, headers: Record<string, string> = {}, opts: { timeoutMs?: number } = {}) {
   const res = await fetchWithRetry(url, { headers, timeoutMs: opts.timeoutMs });
+  if (res.status === 429) {
+    throw new Error(`HTTP 429 (rate limited): ${url}. Semantic Scholar API limit reached. Wait 60s and retry, or use a different approach.`);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
   return res.json();
 }

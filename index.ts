@@ -16,6 +16,40 @@ import { registerDocsTools } from "./tools/hf_docs";
 import { registerResearchTool } from "./tools/research";
 import { registerHfJobsTool } from "./tools/hf_jobs";
 
+// ── Auto-load .env files for HF_TOKEN / GITHUB_TOKEN ──
+function loadEnvFiles() {
+  // Try multiple locations in priority order
+  const envPaths = [
+    ".env",                          // current directory
+    "/home/san/Desktop/ml-intern/.env", // ml-intern project
+  ];
+  for (const envPath of envPaths) {
+    try {
+      const fs = require("node:fs");
+      const content = fs.readFileSync(envPath, "utf-8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith("#")) {
+          const eqIdx = trimmed.indexOf("=");
+          if (eqIdx > 0) {
+            const key = trimmed.slice(0, eqIdx).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+            // Strip quotes
+            if ((val.startsWith('"') && val.endsWith('"')) ||
+                (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1);
+            }
+            if (!process.env[key]) {
+              process.env[key] = val;
+            }
+          }
+        }
+      }
+    } catch { /* file not found or not readable */ }
+  }
+}
+loadEnvFiles();
+
 export default function mlIntern(pi: ExtensionAPI) {
   // ── Register all ml-intern tools ──
   registerPlanTool(pi);
@@ -42,22 +76,50 @@ export default function mlIntern(pi: ExtensionAPI) {
     "hf_jobs",
   ];
 
+  function isMlInternTool(name: string): boolean {
+    return ML_INTERN_TOOLS.includes(name);
+  }
+
   function disableMlInternTools() {
-    const active = pi.getActiveTools().map((t: { name: string }) => t.name);
-    pi.setActiveTools(active.filter((n: string) => !ML_INTERN_TOOLS.includes(n)));
+    const all = pi.getAllTools();
+    if (all.length === 0) return;
+    // Set active tools to only non-ml-intern tools.
+    // We compute from getAllTools() (reliable) not getActiveTools() (null names).
+    const names = all
+      .map((t: { name: string }) => t.name)
+      .filter((n: string) => !isMlInternTool(n));
+    pi.setActiveTools(names);
   }
 
   function enableMlInternTools() {
-    const active = pi.getActiveTools().map((t: { name: string }) => t.name);
-    const toAdd = ML_INTERN_TOOLS.filter((n: string) => !active.includes(n));
-    pi.setActiveTools([...active, ...toAdd]);
+    const all = pi.getAllTools();
+    if (all.length === 0) return;
+    // Activate ALL registered tools (both standard + ml-intern)
+    const names = all.map((t: { name: string }) => t.name);
+    pi.setActiveTools(names);
   }
 
-  // Disable ml-intern tools by default
-  disableMlInternTools();
-
-  // One-shot flag
+  // One-shot flag: true after /ml-intern triggers, consumed by before_agent_start
   let active = false;
+  // Sub-agent mode: enable tools but don't override the system prompt.
+  // Used by the research sub-agent which provides its own prompt via
+  // --append-system-prompt.
+  const isSubAgent = process.env.ML_INTERN_SUBAGENT === "1";
+
+  // Also support ML_INTERN_FORCE=1 env var for print-mode usage.
+  // This makes the very first turn use full ml-intern capabilities.
+  if (process.env.ML_INTERN_FORCE === "1") {
+    active = true;
+  }
+
+  // Register a --ml-intern CLI flag for convenience
+  try {
+    pi.registerFlag?.("ml-intern", {
+      description: "Force ml-intern mode for print-mode sessions",
+      type: "boolean",
+      default: false,
+    });
+  } catch { /* registerFlag may not exist in all pi versions */ }
 
   // ── /ml-intern command ──
   pi.registerCommand("ml-intern", {
@@ -72,28 +134,42 @@ export default function mlIntern(pi: ExtensionAPI) {
         return;
       }
       active = true;
-      enableMlInternTools();
       pi.sendUserMessage(args);
       ctx.ui.notify("ML Intern mode — researching papers, validating datasets, implementing with zero errors", "info");
     },
   });
 
-  // ── Inject system prompt on /ml-intern ──
+  // ── before_agent_start ──
+  // Controls tool activation & system prompt injection. Three modes:
+  //   1. Sub-agent (ML_INTERN_SUBAGENT=1): enable tools, keep existing prompt
+  //   2. /ml-intern or force mode: enable tools + inject ml-intern system prompt
+  //   3. Normal mode: disable ml-intern tools
   pi.on("before_agent_start", async (event) => {
-    if (!active) return undefined;
-    active = false;
-    // Keep tools enabled for this turn, disable on next turn
-    // (tools stay active during the ml-intern agent loop)
-    const prompt = SYSTEM_PROMPT.replace("[num_tools]", String(pi.getActiveTools().length));
-    return { systemPrompt: event.systemPrompt + prompt };
+    if (isSubAgent) {
+      // Research sub-agent: enable all tools but DON'T override the system prompt.
+      // The research prompt was already appended via --append-system-prompt.
+      enableMlInternTools();
+      return undefined;
+    }
+    if (active) {
+      // /ml-intern or force mode: enable research tools and inject system prompt
+      active = false;
+      enableMlInternTools();
+      const toolCount = pi.getActiveTools().length;
+      const prompt = SYSTEM_PROMPT.replace("[num_tools]", String(toolCount));
+      return { systemPrompt: event.systemPrompt + prompt };
+    }
+    // Normal mode: ensure ml-intern tools are OFF
+    disableMlInternTools();
+    return undefined;
   });
 
-  // ── Disable ml-intern tools after the turn ends ──
+  // ── agent_end: belt-and-suspenders cleanup ──
   pi.on("agent_end", async () => {
     disableMlInternTools();
   });
 
-  // ── Notify on startup ──
+  // ── session_start: notify + initial deactivation ──
   pi.on("session_start", async (_e, ctx) => {
     disableMlInternTools();
     const plan = getCurrentPlan();

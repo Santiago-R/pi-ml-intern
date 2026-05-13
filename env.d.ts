@@ -7,7 +7,16 @@ declare module "@earendil-works/pi-coding-agent" {
     registerTool(def: ToolDefinition): void;
     registerCommand(name: string, def: CommandDefinition): void;
     sendUserMessage(content: string | Array<{ type: string; [k: string]: unknown }>, opts?: Record<string, unknown>): void;
-    getActiveTools(): { name: string }[];
+    sendMessage(message: Record<string, unknown>, opts?: Record<string, unknown>): void;
+    getActiveTools(): { name: string; description?: string; [k: string]: unknown }[];
+    setActiveTools(names: string[]): void;
+    getAllTools(): { name: string; description?: string; sourceInfo?: Record<string, unknown>; [k: string]: unknown }[];
+    exec(command: string, args?: string[], opts?: Record<string, unknown>): Promise<{ stdout: string; stderr: string; code: number | null; killed: boolean }>;
+    appendEntry(customType: string, data?: unknown): void;
+    events: {
+      on(event: string, handler: (...args: any[]) => void): void;
+      emit(event: string, data: unknown): void;
+    };
   }
   export interface ToolDefinition {
     name: string;
@@ -33,8 +42,10 @@ declare module "@earendil-works/pi-coding-agent" {
     sessionManager: {
       getEntries(): Array<{ type: string; customType?: string; data?: unknown }>;
       getSessionFile(): string;
+      getBranch(): Array<{ type: string; customType?: string; data?: unknown; message?: Record<string, unknown> }>;
     };
     isIdle(): boolean;
+    abort(): void;
   }
 }
 

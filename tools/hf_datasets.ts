@@ -166,22 +166,46 @@ export function registerHfDataTools(pi: ExtensionAPI) {
         const repoType = (params.type as string) || "model";
         const sort = (params.sort as string) || "downloads";
         const limit = Math.min((params.limit as number) || 5, 25);
+        const headers = hfHeaders();
 
         // ── Lookup specific repos ──
         if (repoIds && repoIds.length > 0) {
-          const endpoint = repoType === "dataset" ? "datasets" : repoType === "space" ? "spaces" : "models";
+          // Try each repo against all three endpoints to handle
+          // datasets being looked up as models, etc.
+          const endpoints = repoType === "model"
+            ? ["models", "datasets", "spaces"]
+            : repoType === "dataset"
+              ? ["datasets", "models", "spaces"]
+              : ["spaces", "models", "datasets"];
+
           const results: string[] = [];
           for (const rid of repoIds) {
-            try {
-              const res = await fetchWithRetry(`${HF_API}/${endpoint}/${encodeURIComponent(rid)}`, { timeoutMs: 15_000 });
-              if (res.ok) {
-                const d = await res.json();
-                results.push(`=== ${rid} ===\n${JSON.stringify(d, null, 2).slice(0, 2000)}\n`);
-              } else {
-                results.push(`=== ${rid} ===\nNot found (HTTP ${res.status})\n`);
-              }
-            } catch (e) {
-              results.push(`=== ${rid} ===\nError: ${e}\n`);
+            let found = false;
+            for (const endpoint of endpoints) {
+              try {
+                const res = await fetchWithRetry(`${HF_API}/${endpoint}/${encodeURIComponent(rid)}`, { headers, timeoutMs: 15_000 });
+                if (res.ok) {
+                  const d = await res.json();
+                  const typeLabel = endpoint === "datasets" ? "Dataset" : endpoint === "spaces" ? "Space" : "Model";
+                  results.push(`=== ${rid} (${typeLabel}) ===\n${JSON.stringify(d, null, 2).slice(0, 2000)}\n`);
+                  found = true;
+                  break;
+                }
+              } catch { /* try next endpoint */ }
+            }
+            if (!found) {
+              // Try a broader info endpoint
+              try {
+                const res = await fetchWithRetry(`${HF_API}/repos/${encodeURIComponent(rid)}`, { headers, timeoutMs: 15_000 });
+                if (res.ok) {
+                  const d = await res.json();
+                  results.push(`=== ${rid} ===\n${JSON.stringify(d, null, 2).slice(0, 2000)}\n`);
+                  found = true;
+                }
+              } catch { /* ignore */ }
+            }
+            if (!found) {
+              results.push(`=== ${rid} ===\nNot found. Check: https://huggingface.co/${encodeURIComponent(rid)}\n`);
             }
           }
           return ok(results.join("\n"), { repos: repoIds });
@@ -191,13 +215,20 @@ export function registerHfDataTools(pi: ExtensionAPI) {
         if (search) {
           const endpoint = repoType === "dataset" ? "datasets" : repoType === "space" ? "spaces" : "models";
           const url = `${HF_API}/${endpoint}?search=${encodeURIComponent(search)}&sort=${sort}&limit=${limit}&full=true`;
-          const res = await fetchWithRetry(url, { timeoutMs: 15_000 });
-          if (!res.ok) return err(`Search failed: HTTP ${res.status}`);
+          const res = await fetchWithRetry(url, { headers, timeoutMs: 15_000 });
+          if (!res.ok) {
+            return err(`Search failed: HTTP ${res.status}. Try a different search query or browse directly at https://huggingface.co/${endpoint}?search=${encodeURIComponent(search)}`);
+          }
           const results = await res.json();
-          if (!Array.isArray(results)) return err("Unexpected API response");
+          if (!Array.isArray(results)) {
+            return err(`Unexpected API response format. The API may have changed. Browse: https://huggingface.co/${endpoint}?search=${encodeURIComponent(search)}`);
+          }
+          if (results.length === 0) {
+            return ok(`No ${endpoint} found matching '${search}'.\nTry browsing: https://huggingface.co/${endpoint}?search=${encodeURIComponent(search)}`, { search, type: repoType, count: 0 });
+          }
 
           const lines = results.map((x: Record<string, unknown>, i: number) =>
-            `${i + 1}. ${x.id}\n   Downloads: ${(x.downloads as number ?? 0).toLocaleString()}  ` +
+            `${i + 1}. ${x.id ?? x.name ?? "?"}\n   Downloads: ${(x.downloads as number ?? 0).toLocaleString()}  ` +
               `Likes: ${(x.likes as number ?? 0).toLocaleString()}\n   ` +
               `Created: ${String(x.createdAt ?? "?").slice(0, 10)}\n   ${String(x.description ?? "").slice(0, 200)}\n`
           );
