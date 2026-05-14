@@ -6,7 +6,7 @@ ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — auto
 
 Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's default behavior.
 
-> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.5). APIs, tools, and behavior may change without notice. Use at your own risk. Feedback and contributions welcome.
+> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.6). There may be bugs and performance may lag bahind the original project. Feedback and contributions welcome.
 
 ## Quick Start
 
@@ -18,15 +18,26 @@ pi install npm:@santiago-r/pi-ml-intern
 
 Or manually: copy this directory to `~/.pi/agent/extensions/ml-intern/` (global) or `.pi/extensions/ml-intern/` (project-local).
 
-### Usage examples
+### Usage example
 
 ```
-/ml-intern fine-tune Qwen2.5 on my instruction dataset
-/ml-intern implement DPO training with the Anthropic HH dataset
-/ml-intern research the best LoRA recipe for code generation
+/ml-intern Generate a state-of-the-art cardiac event classifier (multi-label) from publicly available ECG datasets. Emphasize optimization of low-level signal pre-processing. Emphasize explainability, output SHAP values alongside predictions. Evaluate on arrythmia detection ROC-AUC for a held-out test split.
 ```
 
-Type `/ml-intern` followed by your ML task. The extension uses ml-intern's tools and system prompt for that turn, then returns to normal Pi behavior.
+Type `/ml-intern` followed by your ML task. Include concrete file paths, dataset formats, evaluation criteria, and any constraints. The more specific you are, the better the result.
+
+## Requirements
+
+- **Pi** (coding agent harness)
+
+### Recommended access tokens
+
+Set these for full capability. Without them, HF Hub lookups and GitHub code searches are rate-limited to public repos only, and HF Jobs is unavailable.
+
+- `HF_TOKEN` — enables gated/private datasets, model downloads, and HF Jobs GPU training. [Get one here](https://huggingface.co/settings/tokens).
+- `GITHUB_TOKEN` — lifts GitHub API rate limits. [Get one here](https://github.com/settings/tokens).
+
+Tokens are auto-loaded from `.env` in the working directory. No manual `export` needed.
 
 ## What it does
 
@@ -54,51 +65,15 @@ When you use `/ml-intern`, the agent:
 | `find_hf_api` | Search HF REST API endpoints |
 | `research` | Spawn isolated sub-agent for deep literature research |
 
-## How it works
+## Running headless (no TUI)
 
-```
-User types: /ml-intern fine-tune llama on ultrachat
-                     │
-                     ▼
-         Command handler sends task as user message
-         Sets one-shot flag
-                     │
-                     ▼
-         before_agent_start fires
-         Injects exact 15.8KB ml-intern v3 system prompt
-         Agent now has: literature workflow + anti-pattern guard + tool guidance
-                     │
-                     ▼
-         Next turn: flag resets → Pi back to normal
-```
+Prefer the CLI? Set `ML_INTERN_FORCE=1` for print mode:
 
-## Modes of Operation
-
-### 1. Interactive Mode (TUI)
-Use `/ml-intern <task>` inside the Pi TUI. Tools activate for one turn only.
-
-### 2. Print Mode (CLI)
-Set `ML_INTERN_FORCE=1` to run ml-intern in headless mode:
 ```bash
-ML_INTERN_FORCE=1 pi -p "fine-tune a model on my_data.jsonl"
+ML_INTERN_FORCE=1 pi -p "Train a small GPT on input_data/my_data.jsonl"
 ```
 
-### 3. Sub-Agent Mode
-Internal — used by the `research` tool. Enabled via `ML_INTERN_SUBAGENT=1`.
-
-## Automatic .env Loading
-
-The extension auto-loads `HF_TOKEN` and `GITHUB_TOKEN` from:
-1. `.env` in the current working directory
-2. `/home/san/Desktop/ml-intern/.env`
-
-No manual `export` needed.
-
-## Requirements
-
-- **Pi** (coding agent harness)
-- Optional: `HF_TOKEN` (for private/gated HF Hub datasets) — auto-loaded from .env
-- Optional: `GITHUB_TOKEN` (for higher GitHub API rate limits) — auto-loaded from .env
+This activates all 12 research tools and the ml-intern system prompt for the duration of the command, then exits. Works in shell scripts, CI, cron jobs, or even in agent subtasks if you are crazy enough.
 
 ## Attribution
 

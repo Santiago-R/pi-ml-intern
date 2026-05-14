@@ -20,8 +20,7 @@ import { registerHfJobsTool } from "./tools/hf_jobs";
 function loadEnvFiles() {
   // Try multiple locations in priority order
   const envPaths = [
-    ".env",                          // current directory
-    "/home/san/Desktop/ml-intern/.env", // ml-intern project
+    ".env", // current directory
   ];
   for (const envPath of envPaths) {
     try {
