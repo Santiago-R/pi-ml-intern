@@ -134,7 +134,7 @@ export default function mlIntern(pi: ExtensionAPI) {
       }
       active = true;
       pi.sendUserMessage(args);
-      ctx.ui.notify("ML Intern mode — researching papers, validating datasets, implementing with zero errors", "info");
+      ctx.ui.notify("ML Intern mode", "info");
     },
   });
 

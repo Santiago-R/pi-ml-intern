@@ -130,6 +130,9 @@ async function apiPost(path: string, body: unknown, headers: Record<string, stri
     body: JSON.stringify(body),
     timeoutMs: 30_000,
   });
+  if (res.status === 429) {
+    throw new Error(`HF Jobs API rate limited (HTTP 429) after all retries. Wait 60s before retrying.`);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
@@ -139,6 +142,9 @@ async function apiPost(path: string, body: unknown, headers: Record<string, stri
 
 async function apiGet(path: string, headers: Record<string, string>): Promise<unknown> {
   const res = await fetchWithRetry(`${HF_API}${path}`, { headers, timeoutMs: 30_000 });
+  if (res.status === 429) {
+    throw new Error(`HF Jobs API rate limited (HTTP 429) after all retries. Wait 60s before retrying.`);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);

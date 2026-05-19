@@ -75,10 +75,18 @@ export function registerGithubTools(pi: ExtensionAPI) {
 
         // If ALL calls returned errors (no results at all), report the error
         if (!results.length) {
-          if (lastStatus === 403 || lastStatus === 429) {
+          if (lastStatus === 429) {
             return err(
-              `GitHub API rate limited (HTTP ${lastStatus}). ` +
-              `Set GITHUB_TOKEN in your environment for higher limits, or browse manually:\n` +
+              `GitHub API rate limited (HTTP 429) after all retries. ` +
+              `The anonymous rate limit (60 req/hr) is exhausted. Set GITHUB_TOKEN in .env for ` +
+              `5,000 req/hr. Without a token: wait 60s and retry, or browse manually:\n` +
+              `https://github.com/${org}/${repo}`
+            );
+          }
+          if (lastStatus === 403) {
+            return err(
+              `GitHub API forbidden (HTTP 403). This may be a rate limit or access restriction. ` +
+              `Set GITHUB_TOKEN in your environment for authenticated access. Browse manually:\n` +
               `https://github.com/${org}/${repo}`
             );
           }

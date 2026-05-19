@@ -217,6 +217,12 @@ export function registerHfDataTools(pi: ExtensionAPI) {
           const url = `${HF_API}/${endpoint}?search=${encodeURIComponent(search)}&sort=${sort}&limit=${limit}&full=true`;
           const res = await fetchWithRetry(url, { headers, timeoutMs: 15_000 });
           if (!res.ok) {
+            if (res.status === 429) {
+              return err(
+                `HF Hub API rate limited (HTTP 429) after all retries. ` +
+                `Wait 60s and retry, or browse directly at https://huggingface.co/${endpoint}?search=${encodeURIComponent(search)}`
+              );
+            }
             return err(`Search failed: HTTP ${res.status}. Try a different search query or browse directly at https://huggingface.co/${endpoint}?search=${encodeURIComponent(search)}`);
           }
           const results = await res.json();

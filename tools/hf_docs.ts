@@ -50,7 +50,7 @@ export function registerDocsTools(pi: ExtensionAPI) {
         }
 
         if (!content) {
-          return ok(`Could not fetch docs for '${ep}'.\nTry: ${HF_DOCS}/${ep}`);
+          return ok(`Could not fetch docs for '${ep}'.\nTry browsing directly at: ${HF_DOCS}/${ep}`);
         }
 
         const lines = [`Docs: ${ep}\nSource: ${HF_DOCS}/${ep}/llms.txt\n`];
@@ -89,6 +89,12 @@ export function registerDocsTools(pi: ExtensionAPI) {
           headers: { ...hfHeaders(), "User-Agent": "ml-intern-pi" },
           timeoutMs: 20_000,
         });
+        if (res.status === 429) {
+          return err(
+            `HTTP 429 (rate limited) after all retries: ${url}. ` +
+            `HF docs rate limit exceeded. Wait 60s and retry, or browse directly at the provided URL.`
+          );
+        }
         if (!res.ok) return err(`HTTP ${res.status}: ${url}`);
         const text = await res.text();
         const truncated = text.slice(0, 15_000);

@@ -92,6 +92,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Check a fetchWithRetry response for error statuses and return a
+ * user-friendly error message if all retries were exhausted.
+ * Returns null if the response is OK (2xx).
+ *
+ * Callers should check the return value and surface errors with
+ * actionable guidance (wait time, alternative approaches, docs links).
+ */
+export function checkRateLimit(res: Response, context?: string): string | null {
+  if (res.ok) return null;
+  if (res.status === 429) {
+    return `Rate limited (HTTP 429) after all retries${context ? ` for ${context}` : ""}. ` +
+      `The API's rate limit has been exceeded despite automatic retries. ` +
+      `Wait 60s and retry, or try a different endpoint/approach.`;
+  }
+  if (res.status >= 500) {
+    return `Server error (HTTP ${res.status}) after all retries${context ? ` for ${context}` : ""}. ` +
+      `The server is experiencing issues. Wait a few minutes and retry.`;
+  }
+  return null;
+}
+
 // ── Inlined from @earendil-works/pi-ai ──
 
 import { Type } from "typebox";
