@@ -1,6 +1,6 @@
 {
   "name": "@santiago-r/pi-ml-intern",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "ML Intern extension for Pi — autonomous ML research & implementation with literature-backed recipes. Inspired by Hugging Face's ml-intern.",
   "license": "Apache-2.0",
   "author": "Santiago-R",

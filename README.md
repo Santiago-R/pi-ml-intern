@@ -6,7 +6,7 @@ ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — auto
 
 Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's default behavior.
 
-> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.1.6). Performance may lag behind the original project. Feedback and contributions welcome.
+> **⚠️ EXPERIMENTAL** — This extension is under active development (v0.2.0). Performance may lag behind the original project. Feedback and contributions welcome.
 
 > **⚠️ CAUTION** — By default, `hf_jobs` sets visibility as public for models trained in Hugging Face.
 
