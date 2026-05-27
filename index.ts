@@ -86,7 +86,7 @@ export default function mlIntern(pi: ExtensionAPI) {
     // We compute from getAllTools() (reliable) not getActiveTools() (null names).
     const names = all
       .map((t: { name: string }) => t.name)
-      .filter((n: string) => !isMlInternTool(n));
+      .filter((n: string | undefined): n is string => n !== undefined && !isMlInternTool(n));
     pi.setActiveTools(names);
   }
 
@@ -94,7 +94,9 @@ export default function mlIntern(pi: ExtensionAPI) {
     const all = pi.getAllTools();
     if (all.length === 0) return;
     // Activate ALL registered tools (both standard + ml-intern)
-    const names = all.map((t: { name: string }) => t.name);
+    const names = all
+      .map((t: { name: string }) => t.name)
+      .filter((n: string | undefined): n is string => n !== undefined);
     pi.setActiveTools(names);
   }
 
