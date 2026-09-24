@@ -1,8 +1,18 @@
 # Design
 
-Architecture and implementation decisions for the pi-ml-intern extension.
+Architecture notes for the pi-ml-intern extension.
 
-## Overview
+## Authoritative upstream and migration target
+
+Future updates target **[HuggingChat's ML Intern mode in `huggingface/chat-ui`](https://github.com/huggingface/chat-ui)**, not the retired standalone ml-intern framework. Reviewed baseline: [`80f4edaea2cc79ff743c09f766685cd53fa8cd53`](https://github.com/huggingface/chat-ui/tree/80f4edaea2cc79ff743c09f766685cd53fa8cd53), 2026-09-23.
+
+The [update proposal](./docs/update-proposal.md) is the authoritative migration design and deviation register. It requires close reproduction of upstream's assembled prompts, intentional repetition, MCP tool contracts, research/sandbox/job-check delegation, Trackio monitoring, and workflow tests. Private artifact defaults are the required product difference; Pi runtime adaptations must be explicit and justified. HF remains the default ecosystem. Prompt simplification and provider-neutral redesign are not part of this migration.
+
+Primary references: Chat UI's `src/lib/server/mlAssistantPrompt.ts`, `mlAssistantPrompt.spec.ts`, `mlAssistant.ts`, and `src/lib/server/textGeneration/builtinTools/`. The proposal pins these sources and describes how to track remote Hub MCP schemas separately.
+
+**Implementation status:** the sections below describe the legacy v0.2.0 architecture, not implemented Chat UI parity. Some rationales are historical and need correction: the active-tool API workaround, fixed tool counts, claims of exact upstream equivalence, and error signaling are not migration requirements. Private defaults and the MCP migration remain unimplemented. Execution isolation and enforced spending limits belong to infrastructure, not this extension.
+
+## Legacy implementation overview
 
 12 ML research tools scoped to `/ml-intern` mode. Zero impact on default Pi behavior. 7 standard Pi tools (read, bash, edit, write, grep, find, ls) always available. The 12 ml-intern tools activate only in ml-intern mode.
 
@@ -24,7 +34,7 @@ The `active` flag is one-shot: set by `/ml-intern` or `ML_INTERN_FORCE=1`, consu
 
 ### Why `getAllTools()` not `getActiveTools()`
 
-`pi.getActiveTools()` returns objects with `name=null` during early extension init. Deriving the active set from null-named objects means no ml-intern tools are ever filtered out. The fix: compute tool lists entirely from `pi.getAllTools()`, which returns correct names from the start. This is the #1 gotcha in the codebase.
+Historical rationale: the implementation assumed `getActiveTools()` returned null-named objects and switched to `getAllTools()`. The installed Pi declaration actually returns `string[]`. This workaround is not an authoritative API contract. Rebuilding the selection from all registered tools can enable unrelated disabled tools; the migration must preserve their selection and test the supported Pi API directly.
 
 ### Set, don't filter
 
@@ -48,7 +58,7 @@ Key decisions:
 
 ### HTTP retry strategy
 
-`fetchWithRetry()` in `utils/api.ts` implements ml-intern's exact retry behavior:
+`fetchWithRetry()` in `utils/api.ts` currently uses this legacy retry policy (not a claim of equivalence to current Chat UI):
 
 | Status | Wait | Retries | Total attempts |
 | --- | --- | --- | --- |
@@ -95,7 +105,7 @@ Priority order is based on the requested `type` parameter:
 Every tool returns `{ content: [{ type: "text", text: "..." }], details: {...} }`. Two formatters in `utils/api.ts`:
 
 *   `ok(text, details)` — success output. Truncates at 12K chars (60/40 split around middle).
-*   `err(msg, details)` — error output. Sets `details.isError = true`.
+*   `err(msg, details)` — error text with `details.isError = true`. This metadata alone does not establish a failed execution result in the current Pi contract; correcting error signaling is migration work.
 
 ## Token & auth
 
@@ -138,7 +148,7 @@ All APIs use Node 20's native `fetch()`. No HTTP client libraries. No Python sub
 
 Two prompts in `prompts.ts`:
 
-`**SYSTEM_PROMPT**` (~20KB) — injected into main agent context during ml-intern mode. Based on ml-intern's `system_prompt_v3.yaml`. Deviations: `{{num_tools}}` → `[num_tools]` (JS template literal), backtick escaping, removed "Autonomous/headless" and "notify" sections (not applicable to Pi).
+`**SYSTEM_PROMPT**` (~20KB) — currently injected into main agent context during ml-intern mode. Historically based on the retired ml-intern's `system_prompt_v3.yaml`, with placeholder/escaping changes and removal of autonomous/headless and notify sections. It still contains obsolete sandbox assumptions. It is **not** the current upstream reference: migration will use Chat UI's assembled mode and tool prompts, with only registered, justified adaptations.
 
 `**RESEARCH_SUBAGENT_PROMPT**` — written to temp file and loaded via `--append-system-prompt` by the research sub-agent. Includes tool usage patterns and output format requirements.
 

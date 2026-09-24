@@ -1,6 +1,8 @@
 # pi-ml-intern
 
-ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — autonomous ML research & implementation with literature-backed recipes. Heavily inspired by [Hugging Face's ml-intern](https://github.com/huggingface/ml-intern).
+ML Intern extension for [Pi](https://github.com/earendil-works/pi-mono) — autonomous ML research & implementation with literature-backed recipes.
+
+The authoritative upstream for future updates is **[HuggingChat's ML Intern mode in `huggingface/chat-ui`](https://github.com/huggingface/chat-ui)**. The current v0.2.0 implementation derives from the now-retired [Hugging Face ml-intern](https://github.com/huggingface/ml-intern); it has not yet migrated to Chat UI's workflow and tool contracts.
 
 [![npm](https://img.shields.io/npm/v/@santiago-r/pi-ml-intern)](https://www.npmjs.com/package/@santiago-r/pi-ml-intern) [![GitHub](https://img.shields.io/badge/github-Santiago--R%2Fpi--ml--intern-blue)](https://github.com/Santiago-R/pi-ml-intern)
 
@@ -8,7 +10,18 @@ Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's d
 
 > **⚠️ EXPERIMENTAL** — This extension is under active development (v0.2.0). Performance may lag behind the original project. Feedback and contributions welcome.
 
-> **⚠️ CAUTION** — By default, `hf_jobs` sets visibility as public for models trained in Hugging Face.
+> **⚠️ CURRENT PRIVACY LIMITATION** — v0.2.0 does not ensure private artifacts. Visibility depends on the generated upload code and destination settings. Private-by-default outputs are required by the update proposal, but are not implemented yet.
+
+## Update direction
+
+See [the update proposal](./docs/update-proposal.md) for the source map, implementation plan, and explicit deviation register. The reviewed Chat UI baseline is [`80f4eda`](https://github.com/huggingface/chat-ui/tree/80f4edaea2cc79ff743c09f766685cd53fa8cd53) (2026-09-23).
+
+- Closely reproduce upstream's tested prompts, tool contracts, and delegated workflows—including intentional repeated rules.
+- Make all outputs private by default, with explicit user-requested publication as an exception.
+- Document and justify every behavioral deviation, including necessary Pi adaptations. HF remains the default; broader provider support is a future discussion.
+- Execution isolation and enforced spending limits belong to the VM/sandbox/provider infrastructure. This extension is not a security boundary; tools can execute arbitrary code and launch billable compute.
+
+The usage and tools below describe the **current implementation**, not the proposed migration.
 
 ## Quick Start
 
@@ -79,7 +92,7 @@ This activates all 12 research tools and the ml-intern system prompt for the dur
 
 ## Attribution
 
-Heavily inspired by [Hugging Face's ml-intern](https://github.com/huggingface/ml-intern) (Apache 2.0). All original TypeScript code is Apache 2.0-licensed.
+Current implementation historically derives from [Hugging Face's retired ml-intern](https://github.com/huggingface/ml-intern). The authoritative update reference is [HuggingChat / Chat UI's ML Intern mode](https://github.com/huggingface/chat-ui), including its [workflow prompt](https://github.com/huggingface/chat-ui/blob/80f4edaea2cc79ff743c09f766685cd53fa8cd53/src/lib/server/mlAssistantPrompt.ts). Both upstream repositories are Apache 2.0-licensed. Original TypeScript code here is also Apache 2.0-licensed.
 
 ## License
 
