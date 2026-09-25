@@ -1,6 +1,4 @@
-.gitignore
 .lsn/
-docs/
 node_modules/
 *.tgz
 .env

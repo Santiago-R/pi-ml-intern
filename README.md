@@ -6,7 +6,7 @@ The authoritative upstream for future updates is **[HuggingChat's ML Intern mode
 
 [![npm](https://img.shields.io/npm/v/@santiago-r/pi-ml-intern)](https://www.npmjs.com/package/@santiago-r/pi-ml-intern) [![GitHub](https://img.shields.io/badge/github-Santiago--R%2Fpi--ml--intern-blue)](https://github.com/Santiago-R/pi-ml-intern)
 
-Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's default behavior.
+ML-specific behavior is opt-in through `/ml-intern` or headless force mode. The migration will make ML mode persist for the session until explicit exit; v0.2.0 still uses one-task activation.
 
 > **⚠️ EXPERIMENTAL** — This extension is under active development (v0.2.0). Performance may lag behind the original project. Feedback and contributions welcome.
 
@@ -17,7 +17,13 @@ Only activates when you explicitly invoke `/ml-intern`, with no impact on Pi's d
 See [the update proposal](./docs/update-proposal.md) for the source map, implementation plan, and explicit deviation register. The reviewed Chat UI baseline is [`80f4eda`](https://github.com/huggingface/chat-ui/tree/80f4edaea2cc79ff743c09f766685cd53fa8cd53) (2026-09-23).
 
 - Closely reproduce upstream's tested prompts, tool contracts, and delegated workflows—including intentional repeated rules.
-- Make all outputs private by default, with explicit user-requested publication as an exception.
+- Make all outputs private by default, with explicit user-requested publication as an exception. If private live monitoring is unavailable, stop and offer private persisted metrics only with the user's explicit agreement.
+- Require users to install/configure a compatible **external Pi MCP adapter**. No bundled client, automatic installation, silent configuration rewrites, or service fallback. The plan includes comparing popular adapters' input/output and delegate compatibility, then documenting a tested setup and capability checks.
+- Keep ML mode active until explicit exit, restore it when that session is resumed, and leave new sessions normal unless explicitly launched in ML mode. Exiting does not cancel remote jobs; monitoring resumes only when the user reopens Pi.
+- Allow any Pi model/provider, inherited by delegates—no curated model list or restrictions.
+- Ask for a task allowance or standing authorization before newly rented compute (including smoke jobs/paid sandboxes) and paid hosting/storage. Ordinary cheap lookups, local compute, and existing Pi inference need no additional allowance. Costs are tracked best-effort; infrastructure enforces hard limits.
+- Preserve material user questions. Headless runs stop with resumption instructions when an unanswered decision blocks work rather than guessing or waiting indefinitely.
+- Make a clean breaking migration without legacy compatibility shims. Require funded live validation before claiming reliable training support; until then, label it unverified.
 - Document and justify every behavioral deviation, including necessary Pi adaptations. HF remains the default; broader provider support is a future discussion.
 - Execution isolation and enforced spending limits belong to the VM/sandbox/provider infrastructure. This extension is not a security boundary; tools can execute arbitrary code and launch billable compute.
 
