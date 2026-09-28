@@ -1,0 +1,321 @@
+{
+  "retrieved": "2026-09-26",
+  "adapter": "pi-mcp-adapter@2.37.0",
+  "endpoint": "https://huggingface.co/mcp?login&bouquet=intern",
+  "surface": "Pi direct tool schemas (adapter-normalized), core tools only; account namespace redacted from descriptions",
+  "tools": [
+    {
+      "name": "hf_whoami",
+      "description": "Inspect the current Hugging Face authentication context, including the account, visible organization memberships, and credential access details. Read-only and never returns credential values.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "create_repo",
+      "description": "Create a Hugging Face model, dataset, Space, or bucket repository using an hf:// destination URI. Set source_uri to duplicate an existing model, dataset, or Space server-side.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Destination repo URI in the form hf://models|datasets|spaces|buckets/OWNER/NAME."
+          },
+          "source_uri": {
+            "description": "Optional source repo URI to duplicate, in the form hf://models|datasets|spaces/OWNER/NAME. Must use the same repo type as uri.",
+            "type": "string",
+            "minLength": 1
+          },
+          "private": {
+            "description": "Visibility for the new repo. For duplication, omit to preserve the source visibility; set true for private or false for public.",
+            "type": "boolean"
+          },
+          "sdk": {
+            "description": "Space SDK for new empty Spaces. Not used when source_uri is set.",
+            "type": "string",
+            "enum": [
+              "streamlit",
+              "gradio",
+              "docker",
+              "static"
+            ]
+          }
+        },
+        "required": [
+          "uri"
+        ]
+      }
+    },
+    {
+      "name": "hub_repo_details",
+      "description": "Get details for one or more Hugging Face repos (model, dataset, or space). Auto-detects type unless specified. For datasets, use operations: overview, dataset_structure, dataset_preview. Use dataset_structure first to discover configs, splits, sizes, and schema. Use dataset_preview only when config and split are known, unless the dataset has a single config/split.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "repo_ids": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Repo IDs for (models|dataset/space) - usually in author/name format (e.g. openai/gpt-oss-120b)"
+          },
+          "repo_type": {
+            "description": "Specify lookup type; otherwise auto-detects",
+            "type": "string",
+            "enum": [
+              "model",
+              "dataset",
+              "space"
+            ]
+          },
+          "operations": {
+            "description": "Details to return. Defaults to [\"overview\"]. For datasets, prefer [\"overview\", \"dataset_structure\"] first; then call [\"dataset_preview\"] with config and split.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "overview",
+                "dataset_structure",
+                "dataset_preview"
+              ]
+            }
+          },
+          "config": {
+            "description": "Dataset Viewer config. Required for dataset_preview when the dataset has multiple config/split options. Discover via dataset_structure.",
+            "type": "string"
+          },
+          "split": {
+            "description": "Dataset Viewer split. Required for dataset_preview when the dataset has multiple config/split options. Discover via dataset_structure.",
+            "type": "string"
+          },
+          "offset": {
+            "description": "Row offset for dataset_preview. Defaults to 0.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "description": "Row count for dataset_preview. Defaults to 5 and is clamped to 1-100.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "repo_ids"
+        ]
+      }
+    },
+    {
+      "name": "hf_fs",
+      "description": "When to use: Hugging Face Hub models, datasets, Spaces, collections, papers, daily papers, today's trending models, current paper leaderboard, docs, and repository files.\n\nExamples:\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://models/trending\",\"--limit\",\"10\"]}]}\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://papers/trending\"]}]}\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://papers/daily/latest\"]}]}\n  {\"operations\":[{\"cmd\":\"cat\",\"args\":[\"hf://papers/2501.00001/paper.md\"]}]}\n\nUse hf_fs for Hugging Face Hub filesystem operations. Call it with operations, an array of {cmd, args} items; multiple operations may be submitted together.\n\nUsage:\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://models/org/repo\"]}]}\n\nGrammar; each string below is one args array item:\n  ls     URI [--recursive] [--glob GLOB] [--type TYPE] [--sort SORT] [--limit N]\n  cat    URI [--offset N] [--max-bytes N]\n  attach URI [--max-bytes N]\n  stat   URI\n  find   URI [--name GLOB] [--path GLOB] [--type TYPE] [--limit N]\n  search URI [QUERY] [--type TYPE] [--sort SORT] [--tag TAG] [--kind mcp] [--limit N]\n\nCOMMAND = ls|cat|attach|stat|find|search.\nTYPE = file|dir|repo|bucket|collection|paper|link.\nSORT = createdAt|downloads|likes|lastModified|likes30d|trendingScore|mainSize|id|trending|upvotes.\nURI is a canonical hf:// URI. QUERY and GLOB are each one string.\n\nUse search for resource discovery, not repository-content search; ls for a known directory, find for recursive file discovery by name/path (not file contents), stat for filesystem metadata or an uncertain target type, cat for text contents, and attach for a complete JPEG, PNG, or WebP image. When the request gives an exact text-file URI, use cat directly; do not add ls or stat first. stat does not read the contents of JSON, Markdown, or other text files.\n\nSearch scopes: hf://models[/OWNER], hf://datasets[/OWNER], hf://spaces[/OWNER], hf://collections[/OWNER], hf://papers, and hf://docs[/...]. Repository and repository-file scopes are not supported: search a resource root or owner scope to discover resources; use find for file discovery within a repository or cat for a known text file. Paper and documentation search require QUERY. --tag (repeatable) and --kind are supported only on exactly hf://spaces, not owner scopes or other roots. The only valid --kind value is mcp, which selects MCP Spaces.\nUse ls hf://models/trending, hf://datasets/trending, hf://spaces/trending, or hf://papers/trending for trending listings.\nhf://papers/ID is a paper directory, not paper text. Use cat hf://papers/ID/paper.md for paper text and cat hf://papers/ID/metadata.json for metadata. No preliminary listing is needed for these known paths. Use ls hf://papers/ID to discover other resources.\nOmit --limit, --sort, and --type unless the request requires them. Limits and path-specific behavior are documented at hf://README.md. Issue one hf_fs call.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operations": {
+            "minItems": 1,
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "cmd": {
+                  "type": "string",
+                  "enum": [
+                    "ls",
+                    "cat",
+                    "attach",
+                    "stat",
+                    "find",
+                    "search"
+                  ],
+                  "description": "Command to execute."
+                },
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Command arguments. First item must be an hf:// URI, not a local path or bare filename. One argument per array item. search discovers resources, not repository contents; use root/owner discovery scopes, find for file discovery, or cat for a known text file. --tag and --kind require exactly hf://spaces; the only valid --kind value is mcp."
+                }
+              },
+              "required": [
+                "cmd",
+                "args"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "operations"
+        ]
+      }
+    },
+    {
+      "name": "hf_fs_write",
+      "description": "Write or remove files in Hugging Face repositories and buckets.\n\nGrammar; each token below is one args array element:\n  put URI [--base64] [(-m|--message) MESSAGE] [--description DESCRIPTION]\n          [--branch BRANCH] [--create-pr] [--parent-commit SHA]\n  rm  URI [(-m|--message) MESSAGE] [--description DESCRIPTION]\n          [--branch BRANCH] [--create-pr] [--parent-commit SHA]\n\nURI must be an hf://models|datasets|spaces|buckets/OWNER/NAME/PATH file URI.\nFor put, provide file data in the separate content field. Content is UTF-8 text unless --base64 is present.\nUse --create-pr to propose a change when direct repository writes are unavailable or undesirable.\nBranches, pull requests, descriptions, and parent commits are not supported for buckets.\nA URI '@revision' and --branch are equivalent; do not specify conflicting values.\n--parent-commit must be a 40-character Git commit SHA and prevents overwriting concurrent changes.\nNo pipes, redirects, shell expansion, or multiple commands.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cmd": {
+            "type": "string",
+            "enum": [
+              "put",
+              "rm"
+            ],
+            "description": "Command to execute."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Command arguments; each array item is one grammar token."
+          },
+          "content": {
+            "description": "File content for put. UTF-8 text by default; base64 when args includes --base64.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cmd",
+          "args"
+        ]
+      }
+    },
+    {
+      "name": "hf_jobs",
+      "description": "Remote compute for Hugging Face workflows. Run Python/UV or Docker jobs to deeply analyze Hub datasets, repos, traces, models, and large files; compute trends/statistics; run batch inference/evaluation; or perform long-running work with installed libraries. Use for dataset/repo analysis prompts when local chat inspection is insufficient. Includes submit, logs, inspect, cancel, schedule, labels/names, and volume mounting. Minimal run: {\"operation\":\"run\",\"args\":{\"image\":\"python:3.12\",\"command\":[\"python\",\"-c\",\"print(123)\"]}}. Command arrays are literal argv; strings tokenize quotes and escaping, not shell execution. For pipes, chaining, redirections, or variable expansion, explicitly use [\"/bin/sh\", \"-lc\", \"...\"] only if the image provides that shell. Help: {\"operation\":\"run\",\"args\":{\"help\":true}}; full usage: {}. Follow up with logs or inspect using args: {\"job_id\":\"<returned job ID>\"}.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "description": "Operation to execute. Valid values: \"run\", \"uv\", \"ps\", \"logs\", \"inspect\", \"cancel\", \"update-labels\", \"scheduled update-labels\", \"scheduled run\", \"scheduled uv\", \"scheduled ps\", \"scheduled inspect\", \"scheduled delete\", \"scheduled suspend\", \"scheduled resume\"",
+            "type": "string",
+            "enum": [
+              "run",
+              "uv",
+              "ps",
+              "logs",
+              "inspect",
+              "cancel",
+              "update-labels",
+              "scheduled update-labels",
+              "scheduled run",
+              "scheduled uv",
+              "scheduled ps",
+              "scheduled inspect",
+              "scheduled delete",
+              "scheduled suspend",
+              "scheduled resume"
+            ]
+          },
+          "args": {
+            "description": "Operation-specific arguments as a JSON object",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        }
+      }
+    },
+    {
+      "name": "hf_sandbox",
+      "description": "Create and manage Hugging Face Sandboxes.\n\nGrammar; each token below is one args array element:\n  create [--name NAME] [--image IMAGE] [--flavor FLAVOR] [--timeout DURATION]\n         [--namespace NAMESPACE] [--resource-group-id ID] [--forward-hf-token] [--volume SPEC]...\n         [--bucket OWNER/NAME] [--bucket-mode ro|rw] [--bucket-mount-path PATH]\n  status HANDLE\n  terminate HANDLE\n  ps HANDLE\n  kill HANDLE PROCESS_ID\n\nHANDLE is returned by create. Volume SPEC is hf://[models|datasets|spaces|buckets]/OWNER/NAME[/PATH]:/MOUNT_PATH[:ro|:rw].\nNo pipes, redirects, shell expansion, or multiple commands.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cmd": {
+            "type": "string",
+            "enum": [
+              "create",
+              "status",
+              "terminate",
+              "ps",
+              "kill"
+            ],
+            "description": "Command to execute."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Command arguments; each array item is one grammar token. Sandbox handle returned by hf_sandbox create. Use this value for future sandbox operations. Accepted forms: hfsb2:NAMESPACE:JOB_ID, NAMESPACE/JOB_ID, or a bare job id. Bare job ids default to namespace [authenticated-user]."
+          }
+        },
+        "required": [
+          "cmd",
+          "args"
+        ]
+      }
+    },
+    {
+      "name": "hf_sandbox_exec",
+      "description": "Run a shell command inside a Hugging Face Sandbox.\n\nGrammar; each token below is one args array element:\n  exec HANDLE SHELL_COMMAND [--workdir PATH] [--stdin TEXT] [--timeout SECONDS]\n       [--env NAME=VALUE]... [--detach] [--tag TAG]\n\nSHELL_COMMAND is one string token and runs via /bin/sh -lc.\nForeground timeout defaults to 30 seconds and may not exceed 55.\nDetached commands have no timeout unless set. Redirect detached output to a file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cmd": {
+            "type": "string",
+            "enum": [
+              "exec"
+            ],
+            "description": "Command to execute."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Command arguments; each array item is one grammar token. Sandbox handle returned by hf_sandbox create. Use this value for future sandbox operations. Accepted forms: hfsb2:NAMESPACE:JOB_ID, NAMESPACE/JOB_ID, or a bare job id. Bare job ids default to namespace [authenticated-user]."
+          }
+        },
+        "required": [
+          "cmd",
+          "args"
+        ]
+      }
+    },
+    {
+      "name": "hf_sandbox_fs",
+      "description": "Read, write and manage files inside a Hugging Face Sandbox.\n\nGrammar; each token below is one args array element:\n  ls HANDLE PATH\n  cat HANDLE PATH [--offset N] [--max-bytes N]\n  stat HANDLE PATH\n  write HANDLE PATH (--text TEXT|--base64 BASE64)\n  rm HANDLE PATH [(-r|-R|--recursive)]\n  mkdir HANDLE PATH\n\nPATH is an absolute path inside the sandbox. cat defaults to 20000 bytes and allows at most 100000.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cmd": {
+            "type": "string",
+            "enum": [
+              "ls",
+              "cat",
+              "stat",
+              "write",
+              "rm",
+              "mkdir"
+            ],
+            "description": "Command to execute."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Command arguments; each array item is one grammar token. Sandbox handle returned by hf_sandbox create. Use this value for future sandbox operations. Accepted forms: hfsb2:NAMESPACE:JOB_ID, NAMESPACE/JOB_ID, or a bare job id. Bare job ids default to namespace [authenticated-user]."
+          }
+        },
+        "required": [
+          "cmd",
+          "args"
+        ]
+      }
+    }
+  ]
+}

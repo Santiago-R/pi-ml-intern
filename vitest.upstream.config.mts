@@ -1,12 +1,10 @@
 import { defineConfig } from "vitest/config";
 
+// Optional: regenerate upstream/github from the exact pinned Chat UI SHA first.
 export default defineConfig({
   test: {
-    // Tests are in the tests/ directory
-    include: ["tests/**/*.test.ts"],
-    // Use Node environment
+    include: ["upstream/github/**/*.spec.ts"],
     environment: "node",
-    // Timeout for individual tests
     testTimeout: 10_000,
   },
 });

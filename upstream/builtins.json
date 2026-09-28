@@ -1,0 +1,224 @@
+{
+  "definitions": {
+    "research": {
+      "name": "research",
+      "description": "Spawn a research sub-agent to explore papers, documentation, datasets and code WITHOUT polluting the main conversation context. The sub-agent gets its own independent context window with read-only research tools and returns a concise summary of findings.\n\nALWAYS use this first for:\n- Reproducing or implementing a paper (pass the paper id or URL in the task)\n- Surveying the literature for training recipes before implementing an ML task\n- Researching current API usage before writing code (find examples + read docs)\n- Reading papers, auditing datasets, analyzing repos — any research where raw tool outputs would be too verbose\n\nThe sub-agent knows how to use the paper index, hub_repo_details, the GitHub grounding tools, web search, etc. Just describe what you need researched.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "Detailed description of what to research. Be specific: include library names, trainer types, dataset names, repo names, or doc pages to explore. Example: 'Research current TRL SFTTrainer usage: find working example scripts, read the SFT documentation, and check SFTConfig parameters. Also validate that dataset HuggingFaceH4/ultrachat_200k has the right format for SFT.'"
+          },
+          "context": {
+            "type": "string",
+            "description": "Optional context from the current conversation that the research agent needs (e.g., what the user wants to build, constraints, what's been tried)."
+          }
+        },
+        "required": [
+          "task"
+        ]
+      }
+    },
+    "sandbox_task": {
+      "name": "sandbox_task",
+      "description": "Hand a run-it-until-it-works loop to a sub-agent inside a sandbox you have already created. The sub-agent runs commands, reads the errors, edits the files and re-runs in its own context, and returns only what you need next: the command that worked, the files it changed, the names it touched, or the one error that stopped it.\n\nUse it for:\n- Getting a script to import and run before you submit it as a job\n- Checking data shapes, columns, versions or environment inside the sandbox\n- Validating a trainer config resolves, up to but not including the first step\n- Debugging a failure whose fix is edit-and-rerun\n\nThe sandbox is CPU-only, so do not send it training: a step there measures nothing about the GPU the real run uses and is slow enough to eat the whole delegation. That check is a smoke job on the real flavor. It also cannot create or terminate sandboxes, submit jobs, or write to the Hub — do those yourself. A single command you want to look at is not worth delegating; a loop is.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "handle": {
+            "type": "string",
+            "description": "The sandbox handle from hf_sandbox create, e.g. hfsb2:<namespace>:<id>. The sub-agent works only in this sandbox."
+          },
+          "task": {
+            "type": "string",
+            "description": "What to achieve, and what would prove it. Name the paths involved and the check that counts. Example: 'Make /data/train.py import cleanly against the dataset at /data/train.jsonl, and confirm the columns and tokenized shapes are what the trainer expects. It works when the script reaches the trainer setup and prints the batch shape without erroring.'"
+          },
+          "context": {
+            "type": "string",
+            "description": "Optional context the sub-agent needs and cannot see: what is being built, the versions you pinned, what you already tried."
+          }
+        },
+        "required": [
+          "handle",
+          "task"
+        ]
+      }
+    },
+    "check_job": {
+      "name": "check_job",
+      "description": "Read a job you have already submitted, in a sub-agent, and get back only the verdict: status, the step it reached, the loss and whether it is falling, any warning about metrics or checkpoints not landing, and the one error if it died.\n\nUse it for:\n- Checking a training run instead of reading its logs in this conversation\n- Checking a smoke job, whose tracebacks are the ones you least want in here\n- Deciding whether a run is healthy, hung or already dead\n\nIt reads once and reports; it cannot wait. Call wait yourself for the delay, then call this again — as often as the run needs. It cannot submit, cancel or reschedule a job either, and what its verdict means is your decision.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "The id returned when the job was submitted."
+          },
+          "task": {
+            "type": "string",
+            "description": "What you are checking for, and what would settle it. Example: 'Confirm it got past step 1 without an OOM at batch size 8, and report the steps-per-second so I can size the real run's timeout.'"
+          },
+          "context": {
+            "type": "string",
+            "description": "Optional context the watcher cannot see: what the job is training, the flavor and shape you submitted, what failed on a previous attempt."
+          }
+        },
+        "required": [
+          "job_id",
+          "task"
+        ]
+      }
+    },
+    "create_trackio": {
+      "name": "create_trackio",
+      "description": "Reserve the Trackio dashboard for a training run and get back the exact space_id to pass to trackio.init(). Call this before you submit a training job, then use the id it returns verbatim — the dashboard shown to the user is that Space and no other, so an id you invent instead will leave the user watching a dashboard the run never writes to.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "What is being trained, in a few words — used for the project name and the Space, e.g. 'smollm2-capybara-sft'."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Hub namespace to create the Space in. Only needed when the tool says it has none for this conversation: call hf_whoami and pass what it returns."
+          }
+        },
+        "required": [
+          "project"
+        ]
+      }
+    },
+    "update_plan": {
+      "name": "update_plan",
+      "description": "Create or update the task plan for complex, multi-step work, and keep it current as you go: rewrite the whole plan each call, mark steps completed the moment they finish, and revise pending steps when reality diverges. Skip it entirely for simple or single-step requests.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "description": "One-paragraph consolidated statement of what the user currently wants, folding in every requirement and correction so far. Rewrite it whenever requirements change."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "One-line note on what changed in this update and why."
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "The full plan, replacing the previous one entirely. 3-7 short, verifiable steps; exactly one in_progress at a time.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step": {
+                  "type": "string",
+                  "description": "The step, short and imperative."
+                },
+                "label": {
+                  "type": "string",
+                  "description": "One or two words naming the step for the compact progress display, e.g. 'Baseline eval'."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "completed",
+                    "skipped"
+                  ],
+                  "description": "Mark abandoned steps skipped instead of deleting them."
+                }
+              },
+              "required": [
+                "step",
+                "status",
+                "label"
+              ]
+            }
+          }
+        },
+        "required": [
+          "goal",
+          "steps"
+        ]
+      }
+    },
+    "ask_user_question": {
+      "name": "ask_user_question",
+      "description": "Put a decision to the user as options they can click, and wait for the answer. Use it when the request has more than one sensible reading and those readings lead to materially different work — which framing, which scope, which of several approaches. Prefer it to asking in prose, which cannot be answered with a click. Not for something you can look up, a choice with an obvious default, or anything the user has already told you. It is shown in a small panel, often on a phone, and everything you write is shown in full: ask in a sentence or two, keep each label to a few words, and put the detail and trade-off in the option's description.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "description": "The decisions to put to the user, at most four.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The complete question in a sentence or two, ending in a question mark."
+                },
+                "header": {
+                  "type": "string",
+                  "description": "Short label naming the decision, around 12 characters (e.g. \"Database\")."
+                },
+                "multiSelect": {
+                  "type": "boolean",
+                  "description": "Whether more than one option may be chosen."
+                },
+                "options": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 4,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "description": "The choice, in a few words — details belong in the description. In a budget question, a label that names a dollar amount must carry setBudgetUsd."
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "What picking this means, and its trade-off, in a sentence or two. What the choice costs goes here, not in the label."
+                      },
+                      "setBudgetUsd": {
+                        "type": "number",
+                        "description": "ML sessions with a compute budget only: if the user picks this option, the session budget is set to this many dollars. The option's title is generated from the amount and your label is ignored — put the trade-off in the description. Use the smallest whole amount that covers the run you are proposing."
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "description"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "question",
+                "header",
+                "options",
+                "multiSelect"
+              ]
+            }
+          }
+        },
+        "required": [
+          "questions"
+        ]
+      }
+    }
+  },
+  "doctrine": {
+    "research": "RESEARCH DELEGATION: research is how you ground research-shaped work, and research-shaped work ALWAYS starts with it. Reproducing or implementing a paper, surveying training recipes, comparing methods, finding and reading reference implementations before writing training code — for every one of these your first call is research; do not do the crawling in this conversation. The sub-agent runs its own search-and-read loop in a separate context and returns a short attributed summary, so a full literature pass costs this conversation one tool round and no raw dumps land in your context. Give it a specific task — the paper id or URL, the libraries, models and datasets you already know — plus a sentence of conversation context. The only lookups that skip it are single already-named facts: one model id, one dataset's schema, one doc page.",
+    "github_find_examples": "CODE GROUNDING: Your knowledge of the Hugging Face libraries — transformers, trl, peft, accelerate, diffusers — is out of date, and you cannot tell which parts. Those APIs change faster than your training data: trainer classes get renamed, config arguments are removed, argument names move between releases. Code you write from memory will look correct and fail at import time, and you will not notice until it runs. So before writing ML training, fine-tuning, evaluation or inference code, call github_find_examples to locate a current example script and github_read_file to read it, then implement from what the file actually shows — its imports, its trainer and config arguments, its dataset handling — rather than from what you remember. Do this even when you feel certain; certainty about a stale API is exactly the failure. Skip it only for tasks that produce no code: data queries, status checks, discussion. Before submitting anything that costs money or time to run — a training job, a long evaluation — check that you have read a working reference implementation, and say which file it was. If you could not find one, say so plainly instead of proceeding on recall.",
+    "wait": "WAITING: When work you started needs time — a training job, a long evaluation — call wait rather than calling its status tool again straight away. Polling in a tight loop does not make the work finish sooner, and it spends the turn you will need to act on the result.",
+    "update_plan": "PLANNING: For complex multi-step work — several distinct stages, multiple tool calls, or requirements that evolve over the conversation — call update_plan before starting and keep it current as you go. Keep 3-7 short, verifiable steps with exactly one in_progress, each with a one-or-two-word label; mark steps completed the moment they finish, and mark abandoned steps skipped instead of deleting them. Rewrite the goal whenever the user's requirements change so it always folds in every correction so far. Never use it for simple or single-step requests, and do not repeat the plan in your reply — the interface already shows it.",
+    "ask_user_question": "ASKING THE USER: When the request has more than one sensible reading and those readings lead to materially different work, call ask_user_question before starting rather than guessing. Asking in prose instead does not count — a question in your reply cannot be answered with a click, and the user may not be there to read it. Tool calls happen only through the function-calling mechanism — writing <ask_user_question> tags into reply text calls nothing and shows the user broken markup. Give 2-4 concrete options, each with a short note on what picking it means, and set multiSelect when more than one can apply together. Ask once, then get on with the work using what you are told. Do not use it for something you can look up, for a choice with an obvious default, or when the user has already said what they want.",
+    "create_trackio": "TRACKIO DASHBOARDS: create_trackio reserves the dashboard and returns the space_id to use. Call it before submitting a training job and pass that id to trackio.init(space_id=...) exactly as given. The user's dashboard is wired to that Space from the moment you call this, so it fills in as the run logs — an id you chose yourself instead points them at a Space nothing writes to."
+  }
+}
