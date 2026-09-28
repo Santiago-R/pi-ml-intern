@@ -1,12 +1,16 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 
 export const STATE = 'ml-intern-state';
-export type Plan = {goal:string; steps:{step:string;label?:string;status:'pending'|'in_progress'|'completed'|'skipped'}[];version:number};
-export type State = {active:boolean; added:string[]; plan?:Plan; question?:unknown; namespaces:string[]; jobs:string[]; finished:string[]; allowance?:string; publications:string[]; waits:number; destinations:Record<string,boolean>};
-export const emptyState = ():State => ({active:false,added:[],namespaces:[],jobs:[],finished:[],publications:[],waits:0,destinations:{}});
+type Plan = {goal:string; steps:{step:string;label?:string;status:'pending'|'in_progress'|'completed'|'skipped'}[];version:number};
+export type SubmissionAttempt = {id:string; kind:'job'|'sandbox'; name:string; namespace?:string; attemptedAt:string; status:'dispatching'|'unknown'};
+export type State = {active:boolean; plan?:Plan; question?:unknown; namespaces:string[]; jobs:string[]; finished:string[]; attempts:SubmissionAttempt[]; allowance?:string; publications:string[]; waits:number; destinations:Record<string,boolean>};
+export const emptyState = ():State => ({active:false,namespaces:[],jobs:[],finished:[],attempts:[],publications:[],waits:0,destinations:{}});
 export function restore(ctx: ExtensionContext):State {
   const entry=ctx.sessionManager.getBranch().findLast(e=>e.type==='custom'&&e.customType===STATE);
-  return entry?.type==='custom' ? structuredClone(entry.data as State) : emptyState();
+  if(entry?.type!=='custom')return emptyState();
+  const data=structuredClone(entry.data as Partial<State>&{added?:unknown});
+  delete data.added;
+  return {...emptyState(),...data,attempts:Array.isArray(data.attempts)?data.attempts:[]};
 }
 const cut=(s:string,n:number)=>s.length>n?s.slice(0,n-1)+'…':s;
 export function plan(args:Record<string,any>,version:number):Plan {
@@ -30,7 +34,12 @@ export function renderPlan(p:Plan) {
   }
   return lines.join('\n');
 }
+export function pendingResources(s:State):string[] {
+  const references=s.jobs.filter(ref=>!s.finished.includes(ref));
+  const attempts=s.attempts.map(a=>`${a.kind} submission ${a.status} for ${a.name} (${a.attemptedAt}); inspect by name before retrying`);
+  return [...references,...attempts];
+}
 export function runningWarning(s:State) {
-  const pending=s.jobs.filter(ref=>!s.finished.includes(ref));
-  return pending.length ? `Remote jobs are NOT cancelled automatically. These are observed references, not current status; inspect them explicitly. Charges may continue for any still running:\n${pending.join('\n')}` : '';
+  const pending=pendingResources(s);
+  return pending.length ? `Remote jobs are NOT cancelled automatically. These are observed references or unresolved submissions, not current status; inspect them explicitly. Charges may continue for any still running:\n${pending.join('\n')}` : '';
 }

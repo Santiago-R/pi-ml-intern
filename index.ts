@@ -3,28 +3,53 @@ import { resolve } from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { applyBilling, checkCapabilities, dispatchOutcome, expandFiles, hubRepoRoot, isHfProxyCall, OPTIONAL, REQUIRED, structured, whoamiNamespaces } from './runtime/contracts';
 import { modePrompt } from './runtime/prompts';
-import { activeOwned, OWNED, registerTools } from './runtime/tools';
+import { availableOwned, OWNED, registerTools } from './runtime/tools';
 import registerGithub from './runtime/github';
-import { emptyState, renderPlan, restore, runningWarning, STATE } from './runtime/state';
+import { emptyState, pendingResources, renderPlan, restore, runningWarning, STATE, type SubmissionAttempt } from './runtime/state';
 import { allowanceSlug, matchesAllowance, paidOperation, paidResourceName, recordAuthorization, sandboxGrammarError } from './runtime/policy';
-import { applyLifecycle, observeLifecycle, type LifecycleDelta } from './runtime/lifecycle';
+import { applyLifecycle, observeLifecycle, reconcileNamedAttempts, type LifecycleDelta } from './runtime/lifecycle';
 
 export default function mlIntern(pi:ExtensionAPI) {
   try {loadEnvFile(resolve('.env'));} catch(e) {if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}
   let state=emptyState();
+  const addedThisProcess=new Set<string>();
   const save=()=>pi.appendEntry(STATE,structuredClone(state));
   const report=(ctx:ExtensionContext,text:string,level:'info'|'warning'|'error'='info')=>{
     if(ctx.hasUI)ctx.ui.notify(text,level);else console.error(text);
   };
   const owned=(name:string)=>OWNED.includes(name);
-  const disable=()=>pi.setActiveTools(pi.getActiveTools().filter(n=>!owned(n)&&!state.added.includes(n)));
+  const disable=()=>{
+    pi.setActiveTools(pi.getActiveTools().filter(n=>!owned(n)&&!addedThisProcess.has(n)));
+    addedThisProcess.clear();
+  };
   const enable=()=>{
     const tools=pi.getAllTools();checkCapabilities(tools);
     const active=pi.getActiveTools();
     // Optional MCP tools disabled by the user stay disabled.
-    const selected=[...activeOwned(active),...REQUIRED,...OPTIONAL.filter(n=>active.includes(n))].filter(n=>tools.some(t=>t.name===n));
-    state.added=[...new Set([...state.added,...selected.filter(n=>!active.includes(n))])];
+    const selected=[...availableOwned(active),...REQUIRED,...OPTIONAL.filter(n=>active.includes(n))].filter(n=>tools.some(t=>t.name===n));
+    for(const name of selected)if(!active.includes(name))addedThisProcess.add(name);
     pi.setActiveTools([...new Set([...active,...selected])]);state.active=true;save();
+  };
+  const submissionAttempt=(toolCallId:string|undefined,toolName:string,input:Record<string,any>,status:SubmissionAttempt['status']):SubmissionAttempt|undefined=>{
+    const kind=toolName==='hf_jobs'&&['run','uv'].includes(input.operation)?'job':toolName==='hf_sandbox'&&input.cmd==='create'?'sandbox':undefined;
+    const name=kind&&paidResourceName(toolName,input);
+    if(!kind||typeof name!=='string'||!name)return;
+    const namespaceIndex=kind==='sandbox'&&Array.isArray(input.args)?input.args.indexOf('--namespace'):-1;
+    const namespace=kind==='job'?input.args?.namespace:namespaceIndex>=0?input.args[namespaceIndex+1]:undefined;
+    return {id:toolCallId??`${kind}:${name}`,kind,name,namespace:typeof namespace==='string'?namespace:undefined,attemptedAt:new Date().toISOString(),status};
+  };
+  const clearAttempt=(id:string|undefined)=>{
+    const length=state.attempts.length;
+    state.attempts=state.attempts.filter(attempt=>attempt.id!==id);
+    return state.attempts.length!==length;
+  };
+  const markUnknown=(toolCallId:string|undefined,toolName:string,input:Record<string,any>)=>{
+    const candidate=submissionAttempt(toolCallId,toolName,input,'unknown');
+    const id=toolCallId??candidate?.id;
+    const existing=state.attempts.find(attempt=>attempt.id===id);
+    if(existing){existing.status='unknown';return existing;}
+    if(candidate)state.attempts.push(candidate);
+    return candidate;
   };
   const warn=(ctx:ExtensionContext)=>{
     const text=runningWarning(state);
@@ -37,7 +62,7 @@ export default function mlIntern(pi:ExtensionAPI) {
     if(!ctx.isIdle()){report(ctx,'Wait for the current run or abort it first.','warning');return;}
     const command=args.trim();
     if(command==='off') {
-      disable();state.active=false;state.added=[];state.allowance=undefined;state.publications=[];state.question=undefined;state.namespaces=[];save();warn(ctx);report(ctx,'ML mode off.');return;
+      disable();state.active=false;state.allowance=undefined;state.publications=[];state.question=undefined;state.namespaces=[];save();warn(ctx);report(ctx,'ML mode off.');return;
     }
     if(command.startsWith('allow ')||command.startsWith('publish ')) {
       if(!state.active){report(ctx,'Enter /ml-intern first.','warning');return;}
@@ -57,8 +82,8 @@ export default function mlIntern(pi:ExtensionAPI) {
     // Hub visibility is not available through MCP metadata. A previous process's
     // creation receipt cannot prove visibility under today's credentials.
     state.destinations={};
-    // Touch extension-owned membership only; never enable unrelated disabled tools.
-    pi.setActiveTools(pi.getActiveTools().filter(n=>!owned(n)));
+    // Reset only this extension's current-process activation delta.
+    disable();
     if(state.active||pi.getFlag('ml-intern')===true||process.env.ML_INTERN_FORCE==='1') {
       try {enable();}catch(e){state.active=false;save();report(ctx,String(e),'error');}
     }
@@ -77,14 +102,13 @@ export default function mlIntern(pi:ExtensionAPI) {
   });
   pi.on('before_agent_start',(event)=>{
     if(!state.active)return;
-    try {checkCapabilities(pi.getAllTools());}catch(e){disable();state.active=false;save();throw e;}
     const context=modePrompt(pi.getActiveTools(),{username:state.namespaces[0],billTo:process.env.HF_BILL_TO,billingResourceGroup:process.env.HF_BILLING_RESOURCE_GROUP});
     return {systemPrompt:event.systemPrompt+'\n\n'+context};
   });
   pi.on('context',event=>{
     if(!state.active)return;
-    const pending=state.jobs.filter(ref=>!state.finished.includes(ref));
-    const block=[state.plan&&renderPlan(state.plan),state.allowance&&`Recorded allowance scope (not a hard cap): ${state.allowance}. Ask before using it for a new experiment or uncertain costs.`,state.question&&`Unanswered question: ${JSON.stringify(state.question)}. Stop until the user responds.`,pending.length&&`Previously observed job references (NOT current status; inspect on resume):\n${pending.join('\n')}`].filter(Boolean).join('\n\n');
+    const pending=pendingResources(state);
+    const block=[state.plan&&renderPlan(state.plan),state.allowance&&`Recorded allowance scope (not a hard cap): ${state.allowance}. Ask before using it for a new experiment or uncertain costs.`,state.question&&`Unanswered question: ${JSON.stringify(state.question)}. Stop until the user responds.`,pending.length&&`Previously observed references or unresolved submissions (NOT current status; inspect on resume):\n${pending.join('\n')}`].filter(Boolean).join('\n\n');
     if(!block)return;
     const messages=[...event.messages];const i=messages.findLastIndex(m=>m.role==='user');
     const m=messages[i];if(m?.role!=='user')return;
@@ -115,19 +139,21 @@ export default function mlIntern(pi:ExtensionAPI) {
     }
     applyBilling(event.toolName,input);
     await expandFiles(event.toolName,input,ctx.cwd);
+    const attempt=submissionAttempt(event.toolCallId,event.toolName,input,'dispatching');
+    if(attempt){state.attempts=[...state.attempts.filter(item=>item.id!==attempt.id),attempt];save();}
   });
   pi.on('tool_result',event=>{
     if(!state.active)return;
     const input=event.input as Record<string,any>;
     const submitting=event.toolName==='hf_jobs'?['run','uv'].includes(input.operation):event.toolName==='hf_sandbox'&&input.cmd==='create';
+    const attemptId=event.toolCallId??submissionAttempt(undefined,event.toolName,input,'dispatching')?.id;
     const outcome=dispatchOutcome(event.details,event.isError);
     if(outcome!=='ok') {
       if(outcome==='uncertain'&&submitting) {
-        const name=paidResourceName(event.toolName,input);
-        state.jobs=[...new Set([...state.jobs,`Submission outcome unknown${name?` for ${name}`:''}: inspect jobs by name before retrying.`])];
-        save();
+        markUnknown(event.toolCallId,event.toolName,input);save();
         return {content:[...event.content,{type:'text',text:'Submission may have succeeded despite the tool error. Inspect jobs by name before retrying; do not automatically replay this billable call.'}]};
       }
+      if(clearAttempt(attemptId))save();
       return;
     }
     const data=structured(event.content);
@@ -136,17 +162,19 @@ export default function mlIntern(pi:ExtensionAPI) {
       if(data?.action!=='created')return {isError:true,content:[...event.content,{type:'text',text:'Existing destination visibility is unknown. Do not write; choose a new private repo ID or verify visibility outside MCP.'}]};
       const root=hubRepoRoot(input.uri);if(root)state.destinations[root]=input.private!==false;
     }
-    if(event.toolName==='hf_jobs'&&data?.outcome?.kind==='help')return {isError:true,content:[{type:'text',text:'hf_jobs returned usage help; nothing was submitted. Supply an explicit operation and nested args.'}]};
+    if(event.toolName==='hf_jobs'&&data?.outcome?.kind==='help') {
+      clearAttempt(attemptId);save();
+      return {isError:true,content:[{type:'text',text:'hf_jobs returned usage help; nothing was submitted. Supply an explicit operation and nested args.'}]};
+    }
     if(event.toolName==='hf_jobs'||event.toolName==='hf_sandbox') {
       const lifecycle=observeLifecycle(event.toolName,input,event.content);
       if(submitting&&!lifecycle.references.length) {
-        const nameIndex=Array.isArray(input.args)?input.args.indexOf('--name'):-1;
-        const sandboxName=nameIndex>=0?input.args[nameIndex+1]:undefined;
-        const name=input.args?.name??sandboxName;
-        state.jobs=[...new Set([...state.jobs,`Submission outcome unknown${name?` for ${name}`:''}: inspect jobs by name before retrying.`])];save();
+        markUnknown(event.toolCallId,event.toolName,input);save();
         return {isError:true,content:[...event.content,{type:'text',text:'No job or sandbox ID was returned. Submission outcome unknown; inspect by name before retrying. Do not automatically replay this billable call.'}]};
       }
       applyLifecycle(state,lifecycle);
+      if(submitting)clearAttempt(attemptId);
+      if(event.toolName==='hf_jobs'&&['ps','inspect'].includes(input.operation))reconcileNamedAttempts(state,event.content);
     }
     if(event.toolName==='check_job') {
       const lifecycle=(event.details as {lifecycle?:LifecycleDelta}|undefined)?.lifecycle;

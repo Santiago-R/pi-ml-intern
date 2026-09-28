@@ -1,5 +1,5 @@
 import { structured } from './contracts';
-import type { State } from './state';
+import type { State, SubmissionAttempt } from './state';
 
 export type LifecycleDelta = {references: string[]; terminal: string[]};
 
@@ -74,4 +74,58 @@ export function applyLifecycle(state: State, delta: LifecycleDelta): void {
   const matches = (ref: string, value: string) => ref === value || ref.endsWith('/' + value) || value.endsWith('/' + ref);
   const finished = state.jobs.filter(ref => delta.terminal.some(value => matches(ref, value)));
   state.finished = unique([...state.finished, ...finished]);
+}
+
+type NamedReference = {name:string; id:string; namespace?:string};
+
+function namedReferences(value:unknown, found:NamedReference[]=[]):NamedReference[] {
+  if(Array.isArray(value)) {
+    for(const item of value)namedReferences(item,found);
+    return found;
+  }
+  if(!value||typeof value!=='object')return found;
+  const record=value as Record<string,any>;
+  const job=record.job&&typeof record.job==='object'?record.job:record;
+  const name=[job.name,job.job_name,job.display_name,record.name,record.job_name,record.display_name].find(v=>typeof v==='string');
+  const id=[job.id,job.job_id,record.job_id,record.id].find(v=>typeof v==='string');
+  const namespace=[job.owner?.name,job.namespace,record.namespace,record.owner?.name].find(v=>typeof v==='string');
+  if(name&&id)found.push({name,id,namespace});
+  for(const child of Object.values(record))namedReferences(child,found);
+  return found;
+}
+
+function referenceFor(attempt:SubmissionAttempt,id:string,namespace?:string):string|undefined {
+  if(attempt.kind==='job')return id.startsWith('https://')?id:jobReference(id,namespace??attempt.namespace);
+  if(id.startsWith('hfsb2:'))return id;
+  const url=id.match(/^https:\/\/huggingface\.co\/jobs\/([^/]+)\/([^/]+)$/);
+  const owner=url?.[1]??namespace??attempt.namespace;
+  const jobId=url?.[2]??id;
+  return owner?`hfsb2:${owner}:${jobId}`:undefined;
+}
+
+/** Bind only exact-name unresolved submissions; never register unrelated ps history. */
+export function reconcileNamedAttempts(state:State,content:{type:string;text?:string}[]):void {
+  if(!state.attempts.length)return;
+  const observations=namedReferences(structured(content));
+  const text=textOf(content);
+  for(const attempt of state.attempts) {
+    if(observations.some(item=>item.name===attempt.name))continue;
+    const escaped=attempt.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const line=text.split('\n').find(row=>new RegExp(`(?<![A-Za-z0-9_.-])${escaped}(?![A-Za-z0-9_.-])`).test(row));
+    if(line) {
+      const id=line.match(/https:\/\/huggingface\.co\/jobs\/[A-Za-z0-9][\w.-]*\/[0-9a-f]{24}|\bhfsb2:[\w.-]+:[0-9a-f]{24}\b|\b[0-9a-f]{24}\b/)?.[0];
+      if(id)observations.push({name:attempt.name,id});
+    }
+  }
+  const available=observations.filter((item,index,all)=>all.findIndex(other=>other.name===item.name&&other.id===item.id&&other.namespace===item.namespace)===index);
+  const resolved=new Set<string>();
+  for(const attempt of state.attempts) {
+    const index=available.findIndex(item=>item.name===attempt.name);
+    if(index<0)continue;
+    const [observation]=available.splice(index,1);
+    const reference=referenceFor(attempt,observation.id,observation.namespace);
+    if(!reference)continue;
+    state.jobs=unique([...state.jobs,reference]);resolved.add(attempt.id);
+  }
+  state.attempts=state.attempts.filter(attempt=>!resolved.has(attempt.id));
 }

@@ -1,8 +1,8 @@
 import type { State } from './state';
 
-export type AuthorizationKind = 'compute' | 'publish';
+type AuthorizationKind = 'compute' | 'publish';
 
-export const PUBLIC_REPO = /^hf:\/\/(models|datasets|spaces|buckets)\/[^/]+\/[^/]+$/;
+const PUBLIC_REPO = /^hf:\/\/(models|datasets|spaces|buckets)\/[^/]+\/[^/]+$/;
 
 export function validateAuthorization(kind: AuthorizationKind, scope: string): string {
   const value = scope.trim();

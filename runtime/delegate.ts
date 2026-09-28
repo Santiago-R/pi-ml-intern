@@ -13,7 +13,7 @@ const roles={
   sandbox_task:{tools:['hf_sandbox_exec','hf_sandbox_fs'],iterations:30,head:1800,tail:4200,stop:[sandbox.SANDBOX_CONTEXT_WARN_PROMPT,sandbox.SANDBOX_CONTEXT_MAX_PROMPT,sandbox.SANDBOX_ITERATION_LIMIT_PROMPT,sandbox.SANDBOX_REPETITION_PROMPT]},
   check_job:{tools:['hf_jobs','read'],iterations:8,head:1200,tail:4800,stop:[check.JOB_CHECK_CONTEXT_WARN_PROMPT,check.JOB_CHECK_CONTEXT_MAX_PROMPT,check.JOB_CHECK_ITERATION_LIMIT_PROMPT,check.JOB_CHECK_REPETITION_PROMPT]},
 };
-export type Role=keyof typeof roles;
+type Role=keyof typeof roles;
 export function roleError(role:Role,name:string,input:Record<string,any>,handle?:string) {
   if(!roles[role].tools.includes(name))return `Tool ${name} is unavailable to ${role}. Report what you have; the parent owns lifecycle decisions.`;
   if(role==='check_job'&&name==='hf_jobs'&&!['ps','inspect','logs'].includes(input.operation))return 'check_job may only ps, inspect or logs; the parent submits/cancels/waits.';

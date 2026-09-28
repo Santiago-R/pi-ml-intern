@@ -7,8 +7,8 @@ import { delegate } from './delegate';
 import { authorizationPrompt, recordAuthorization, validateAuthorization } from './policy';
 
 export const OWNED=['research','sandbox_task','check_job','create_trackio','update_plan','wait','ask_user_question','request_authorization','github_find_examples','github_read_file','github_list_repos'];
-export const activeOwned=(active:string[])=>OWNED.filter(name=>name!=='sandbox_task'||['hf_sandbox_exec','hf_sandbox_fs'].every(tool=>active.includes(tool)));
-export const result=(text:string,details:unknown=undefined)=>({content:[{type:'text' as const,text}],details});
+export const availableOwned=(active:string[])=>OWNED.filter(name=>name!=='sandbox_task'||['hf_sandbox_exec','hf_sandbox_fs'].every(tool=>active.includes(tool)));
+const result=(text:string,details:unknown=undefined)=>({content:[{type:'text' as const,text}],details});
 
 export function registerTools(pi:ExtensionAPI,get:()=>State,save:()=>void) {
   for(const role of ['research','sandbox_task','check_job'] as const) {

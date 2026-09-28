@@ -40,7 +40,14 @@ describe('real registered extension lifecycle',()=>{
   expect((await h.emit('before_agent_start',{systemPrompt:'Pi harness'})).systemPrompt).toContain('Pi harness');
   await h.emit('agent_end');
   expect((await h.emit('before_agent_start',{systemPrompt:'Pi harness'})).systemPrompt).toContain('HALLUCINATED IMPORTS');
-  await h.command('off');expect(h.active()).toEqual(['read','bash','unrelated']);expect(h.state().active).toBe(false);
+  await h.command('off');expect(h.active()).toEqual(['read','bash','unrelated']);expect(h.state().active).toBe(false);expect(h.state()).not.toHaveProperty('added');
+ });
+ it('restores only the current-process activation delta',async()=>{
+  const h=harness();h.pi.setActiveTools([...h.active(),'hf_jobs']);
+  await h.emit('session_start');await h.command();await h.command('off');
+  expect(h.active()).toEqual(['read','bash','unrelated','hf_jobs']);
+  const resumed=harness({entries:h.entries});await resumed.emit('session_start');await resumed.command();await resumed.command('off');
+  expect(resumed.active()).toEqual(['read','bash','unrelated']);
  });
  it('restores mode on resume, not on an unrelated new session',async()=>{
   const first=harness();await first.emit('session_start');await first.command();
@@ -68,6 +75,13 @@ describe('real registered extension lifecycle',()=>{
   const flagged=harness({flag:true});await flagged.emit('session_start');expect(flagged.state().active).toBe(true);
   const missing=harness({missing:true,flag:true});await missing.emit('session_start');expect(missing.state().active).toBe(false);await missing.command();expect(missing.active()).not.toContain('research');expect(missing.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining('requires direct MCP'), 'error');
   process.env.ML_INTERN_FORCE='1';const force=harness();await force.emit('session_start');expect(force.state().active).toBe(true);
+ });
+ it('validates capabilities on activation without failing open during a later turn',async()=>{
+  const h=harness();await h.emit('session_start');await h.command();
+  h.pi.getAllTools=()=>[];
+  expect((await h.emit('before_agent_start',{systemPrompt:'Pi'})).systemPrompt).toContain('Pi');
+  expect(h.state().active).toBe(true);
+  expect((await h.emit('tool_call',{toolCallId:'proxy',toolName:'mcp',input:{tool:'hf_jobs'}})).block).toBe(true);
  });
  it('keeps optional tools disabled and exposes sandbox_task only with both child tools',async()=>{
   const h=harness();await h.emit('session_start');await h.command();
@@ -176,23 +190,51 @@ describe('real registered extension lifecycle',()=>{
   await h.emit('tool_result',{toolName:'hf_sandbox',input:{cmd:'terminate',args:['terminate',handle]},content:[{type:'text',text:'terminated'}],details:{},isError:false});
   expect(h.state().finished).toContain(handle);
  });
+ it('persists submissions before dispatch and restores unresolved attempts after a crash gap',async()=>{
+  const h=harness();await h.emit('session_start');await h.command();await h.command('allow standing');
+  const input={operation:'uv',args:{name:'crash-gap',script:'print(1)'}};
+  await h.emit('tool_call',{toolCallId:'crash-call',toolName:'hf_jobs',input});
+  expect(h.state().attempts).toEqual([expect.objectContaining({id:'crash-call',kind:'job',name:'crash-gap',status:'dispatching'})]);
+  const resumed=harness({entries:h.entries});await resumed.emit('session_start');
+  expect(resumed.state().attempts).toEqual([expect.objectContaining({name:'crash-gap',status:'dispatching'})]);
+  await resumed.emit('session_shutdown');expect(resumed.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining('crash-gap'),'warning');
+ });
  it('distinguishes pre-dispatch failures from uncertain billable attempts',async()=>{
-  const h=harness();await h.emit('session_start');await h.command();
-  expect(await h.emit('tool_result',{toolName:'hf_jobs',input:{operation:'uv',args:{name:'safe-retry'}},content:[{type:'text',text:'Authenticate'}],details:{error:'auth_required',isError:true},isError:false})).toBeUndefined();
-  expect(h.state().jobs).not.toContain(expect.stringContaining('safe-retry'));
-  const changed=await h.emit('tool_result',{toolName:'hf_jobs',input:{operation:'uv',args:{name:'smoke-experiment-check'}},content:[{type:'text',text:'Connection lost'}],details:{error:'call_failed'},isError:true});
+  const h=harness();await h.emit('session_start');await h.command();await h.command('allow standing');
+  const safe={operation:'uv',args:{name:'safe-retry',script:'print(1)'}};
+  await h.emit('tool_call',{toolCallId:'safe',toolName:'hf_jobs',input:safe});
+  expect(await h.emit('tool_result',{toolCallId:'safe',toolName:'hf_jobs',input:safe,content:[{type:'text',text:'Authenticate'}],details:{error:'auth_required',isError:true},isError:false})).toBeUndefined();
+  expect(h.state().attempts).toEqual([]);
+  const job={operation:'uv',args:{name:'smoke-experiment-check',script:'print(1)'}};
+  await h.emit('tool_call',{toolCallId:'job-unknown',toolName:'hf_jobs',input:job});
+  const changed=await h.emit('tool_result',{toolCallId:'job-unknown',toolName:'hf_jobs',input:job,content:[{type:'text',text:'Connection lost'}],details:{error:'call_failed'},isError:true});
   expect(changed.content.at(-1).text).toContain('do not automatically replay');
-  expect(h.state().jobs).toContain('Submission outcome unknown for smoke-experiment-check: inspect jobs by name before retrying.');
-  const sandbox=await h.emit('tool_result',{toolName:'hf_sandbox',input:{cmd:'create',args:['create','--name','smoke-experiment-sandbox']},content:[{type:'text',text:'Aborted'}],details:{error:'aborted'},isError:false});
+  expect(h.state().attempts).toContainEqual(expect.objectContaining({name:'smoke-experiment-check',status:'unknown'}));
+  const sandboxInput={cmd:'create',args:['create','--name','smoke-experiment-sandbox']};
+  await h.emit('tool_call',{toolCallId:'sandbox-unknown',toolName:'hf_sandbox',input:sandboxInput});
+  const sandbox=await h.emit('tool_result',{toolCallId:'sandbox-unknown',toolName:'hf_sandbox',input:sandboxInput,content:[{type:'text',text:'Aborted'}],details:{error:'aborted'},isError:false});
   expect(sandbox.content.at(-1).text).toContain('do not automatically replay');
-  expect(h.state().jobs).toContain('Submission outcome unknown for smoke-experiment-sandbox: inspect jobs by name before retrying.');
+  expect(h.state().attempts).toContainEqual(expect.objectContaining({kind:'sandbox',name:'smoke-experiment-sandbox',status:'unknown'}));
   await h.command('off');expect(h.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining('smoke-experiment-check'),'warning');
  });
- it('marks ambiguous billable submissions failed and persists their name without replaying',async()=>{
-  const h=harness();await h.emit('session_start');await h.command();
-  const changed=await h.emit('tool_result',{toolName:'hf_jobs',input:{operation:'uv',args:{name:'smoke'}},content:[{type:'text',text:'Accepted'}],details:{server:'hf-intern'},isError:false});
+ it('marks ID-less successes unknown and reconciles only exact named ps results',async()=>{
+  const h=harness();await h.emit('session_start');await h.command();await h.command('allow standing');
+  const input={operation:'uv',args:{name:'smoke',script:'print(1)'}};
+  await h.emit('tool_call',{toolCallId:'ambiguous',toolName:'hf_jobs',input});
+  const changed=await h.emit('tool_result',{toolCallId:'ambiguous',toolName:'hf_jobs',input,content:[{type:'text',text:'Accepted'}],details:{server:'hf-intern'},isError:false});
   expect(changed.isError).toBe(true);expect(changed.content.at(-1).text).toContain('Do not automatically replay');
-  expect(h.state().jobs).toContain('Submission outcome unknown for smoke: inspect jobs by name before retrying.');
+  expect(h.state().attempts).toContainEqual(expect.objectContaining({name:'smoke',status:'unknown'}));
+  const sandboxInput={cmd:'create',args:['create','--name','sandbox-smoke']};
+  await h.emit('tool_call',{toolCallId:'sandbox-list',toolName:'hf_sandbox',input:sandboxInput});
+  await h.emit('tool_result',{toolCallId:'sandbox-list',toolName:'hf_sandbox',input:sandboxInput,content:[{type:'text',text:'Connection lost'}],details:{error:'call_failed'},isError:true});
+  const id='0123456789abcdef01234567';
+  const sandboxId='bbbbbbbbbbbbbbbbbbbbbbbb';
+  const other='aaaaaaaaaaaaaaaaaaaaaaaa';
+  await h.emit('tool_result',{toolCallId:'list',toolName:'hf_jobs',input:{operation:'ps',args:{}},content:[{type:'text',text:`structuredContent:\n${JSON.stringify({outcome:{jobs:[{id,name:'smoke',owner:{name:'owner'}},{id:sandboxId,name:'sandbox-smoke',owner:{name:'owner'}},{id:other,name:'smoke-other',owner:{name:'owner'}}]}})}`}],details:{},isError:false});
+  expect(h.state().attempts).toEqual([]);
+  expect(h.state().jobs).toContain(`https://huggingface.co/jobs/owner/${id}`);
+  expect(h.state().jobs).toContain(`hfsb2:owner:${sandboxId}`);
+  expect(h.state().jobs).not.toContain(`https://huggingface.co/jobs/owner/${other}`);
  });
  it('does not treat a failed creation as authorization to upload',async()=>{
   const h=harness();await h.emit('session_start');await h.command();
