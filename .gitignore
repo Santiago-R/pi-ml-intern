@@ -3,7 +3,7 @@ node_modules/
 *.tgz
 package-lock.json
 
-# Local credentials and user-managed adapter configuration.
+# Local credentials and user-managed MCP configuration.
 .env
 .env.*
 !.env.example

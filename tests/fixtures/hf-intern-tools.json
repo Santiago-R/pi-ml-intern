@@ -1,8 +1,7 @@
 {
   "retrieved": "2026-09-26",
-  "adapter": "pi-mcp-adapter@2.37.0",
   "endpoint": "https://huggingface.co/mcp?login&bouquet=intern",
-  "surface": "Pi direct tool schemas (adapter-normalized), core tools only; account namespace redacted from descriptions",
+  "surface": "Core Hugging Face MCP tool schemas; account namespace redacted from descriptions",
   "tools": [
     {
       "name": "hf_whoami",

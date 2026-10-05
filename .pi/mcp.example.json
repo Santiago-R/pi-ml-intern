@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "hf-intern": {
+      "url": "https://huggingface.co/mcp?login&bouquet=intern",
+      "headers": { "Authorization": "Bearer ${HF_TOKEN}" },
+      "exposure": "direct"
+    }
+  }
+}

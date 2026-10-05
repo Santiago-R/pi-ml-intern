@@ -1,16 +1,21 @@
+import { randomUUID } from 'node:crypto';
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 
 export const STATE = 'ml-intern-state';
-type Plan = {goal:string; steps:{step:string;label?:string;status:'pending'|'in_progress'|'completed'|'skipped'}[];version:number};
+export const BUILD_VERSION = '0.3.0';
+export const UPSTREAM_COMMIT = '1c9c9bcbd92da1c4bdcc7d4a20354191c747709e';
+export const PROMPT_VERSION = UPSTREAM_COMMIT.slice(0,9);
+type Plan = {goal:string; steps:{step:string;label:string;status:'pending'|'in_progress'|'completed'|'skipped'}[];version:number};
 export type SubmissionAttempt = {id:string; kind:'job'|'sandbox'; name:string; namespace?:string; attemptedAt:string; status:'dispatching'|'unknown'};
-export type State = {active:boolean; plan?:Plan; question?:unknown; namespaces:string[]; jobs:string[]; finished:string[]; attempts:SubmissionAttempt[]; allowance?:string; publications:string[]; waits:number; destinations:Record<string,boolean>};
-export const emptyState = ():State => ({active:false,namespaces:[],jobs:[],finished:[],attempts:[],publications:[],waits:0,destinations:{}});
+type HarnessStamp = {build:string;prompt:string;features:string[];model?:string};
+export type State = {active:boolean; sessionId:string; harness:HarnessStamp; plan?:Plan; question?:unknown; namespaces:string[]; jobs:string[]; finished:string[]; attempts:SubmissionAttempt[]; allowance?:string; publications:string[]; waits:number; destinations:Record<string,boolean>};
+export const emptyState = ():State => ({active:false,sessionId:randomUUID(),harness:{build:BUILD_VERSION,prompt:PROMPT_VERSION,features:['native-mcp','local-files','private-trackio']},namespaces:[],jobs:[],finished:[],attempts:[],publications:[],waits:0,destinations:{}});
 export function restore(ctx: ExtensionContext):State {
   const entry=ctx.sessionManager.getBranch().findLast(e=>e.type==='custom'&&e.customType===STATE);
   if(entry?.type!=='custom')return emptyState();
-  const data=structuredClone(entry.data as Partial<State>&{added?:unknown});
+  const defaults=emptyState(),data=structuredClone(entry.data as Partial<State>&{added?:unknown});
   delete data.added;
-  return {...emptyState(),...data,attempts:Array.isArray(data.attempts)?data.attempts:[]};
+  return {...defaults,...data,harness:{...defaults.harness,...data.harness},attempts:Array.isArray(data.attempts)?data.attempts:[]};
 }
 const cut=(s:string,n:number)=>s.length>n?s.slice(0,n-1)+'…':s;
 export function plan(args:Record<string,any>,version:number):Plan {
@@ -18,10 +23,10 @@ export function plan(args:Record<string,any>,version:number):Plan {
     throw Error('Supply a nonempty goal and 1–20 steps. Retry with the full plan.');
   let busy=false;
   const steps=args.steps.map((s:any)=>{
-    if(!s.step?.trim()||!['pending','in_progress','completed','skipped'].includes(s.status)) throw Error('Each step needs text and a valid status.');
+    if(!s.step?.trim()||!s.label?.trim()||!['pending','in_progress','completed','skipped'].includes(s.status)) throw Error('Each step needs text, a label, and a valid status.');
     let status=s.status;
     if(status==='in_progress') {if(busy)status='pending';busy=true;}
-    return {step:cut(s.step.trim(),200),label:s.label?cut(s.label.trim(),24):undefined,status};
+    return {step:cut(s.step.trim(),200),label:cut(s.label.trim(),24),status};
   });
   return {goal:cut(args.goal.trim(),1500),steps,version};
 }

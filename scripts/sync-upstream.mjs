@@ -59,4 +59,4 @@ for(const path of readdirSync(join(root,server+'github'),{recursive:true}).filte
   const adapted=original.replaceAll('"$lib/server/config"','"./config"').replaceAll('\0','\\0');
   writeFileSync(dest,adapted===original?adapted:`// Hugging Face Chat UI, Apache-2.0. ${sha}\n// Modified: local configuration import / reviewable NUL spelling.\n${adapted}`);
 }
-writeFileSync('upstream/github/config.ts','// D08: local token, not the Chat UI configuration service.\nexport const config = { get GITHUB_TOKEN() { return process.env.GITHUB_TOKEN ?? ""; }, set GITHUB_TOKEN(value: string) { process.env.GITHUB_TOKEN = value; } };\n');
+writeFileSync('upstream/github/config.ts','// Local token adapter; not the Chat UI configuration service.\nexport const config = { get GITHUB_TOKEN() { return process.env.GITHUB_TOKEN ?? ""; }, set GITHUB_TOKEN(value: string) { process.env.GITHUB_TOKEN = value; } };\n');

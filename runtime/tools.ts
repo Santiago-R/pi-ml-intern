@@ -12,15 +12,16 @@ const result=(text:string,details:unknown=undefined)=>({content:[{type:'text' as
 
 export function registerTools(pi:ExtensionAPI,get:()=>State,save:()=>void) {
   for(const role of ['research','sandbox_task','check_job'] as const) {
-    const d=definitions.definitions[role];
-    pi.registerTool({name:role,label:role,description:d.description,parameters:d.parameters as any,
+    const tool=structuredClone(definitions.definitions[role]) as any;
+    if(role==='check_job')tool.parameters.properties.script_path={type:'string',description:'Optional immutable local script path that this delegate alone may read for traceback context.'};
+    pi.registerTool({name:role,label:role,description:tool.description,parameters:tool.parameters,
       async execute(_id,args,signal,onUpdate,ctx) {
         if(!get().active)throw Error('Enter /ml-intern first.');
         return delegate(pi,role,args as Record<string,any>,ctx,signal,onUpdate);
       }});
   }
-  const p=definitions.definitions.update_plan;
-  pi.registerTool({name:p.name,label:'Plan',description:p.description,parameters:p.parameters as any,executionMode:'sequential',
+  const planDefinition=definitions.definitions.update_plan;
+  pi.registerTool({name:'update_plan',label:'Plan',description:planDefinition.description,parameters:planDefinition.parameters as any,executionMode:'sequential',
     async execute(_id,args) {
       const s=get(); if(!s.active)throw Error('Enter /ml-intern first.');
       s.plan=plan(args as Record<string,any>,(s.plan?.version??0)+1);save();return result(renderPlan(s.plan),s.plan);
@@ -32,10 +33,10 @@ export function registerTools(pi:ExtensionAPI,get:()=>State,save:()=>void) {
       if(s.waits>=100)throw Error('100 waits reached. Report pending work and let the user decide.');
       s.waits++;save();onUpdate?.(result(`Waiting ${args.seconds}s: ${args.reason}`));await delay(args.seconds*1000,undefined,{signal});return result('Wait finished. Inspect current status; elapsed time does not establish success.');
     }});
-  const q=structuredClone(definitions.definitions.ask_user_question);
-  delete (q.parameters.properties.questions.items.properties.options.items.properties as any).setBudgetUsd;
-  q.parameters.properties.questions.items.properties.options.items.properties.label.description='The choice, in a few words; details belong in the description.';
-  pi.registerTool({name:q.name,label:'Ask user',description:q.description+' In headless mode, stop and resume with an answer.',parameters:q.parameters as any,executionMode:'sequential',
+  const questionDefinition=structuredClone(definitions.definitions.ask_user_question) as any;
+  delete questionDefinition.parameters.properties.questions.items.properties.options.items.properties.setBudgetUsd;
+  questionDefinition.parameters.properties.questions.items.properties.options.items.properties.label.description='The choice, in a few words; details belong in the description.';
+  pi.registerTool({name:'ask_user_question',label:'Ask user',description:questionDefinition.description+' In headless mode, stop and resume with an answer.',parameters:questionDefinition.parameters,executionMode:'sequential',
     async execute(_id,args:any,_signal,_update,ctx) {
       const s=get();if(!s.active)throw Error('Enter /ml-intern first.');
       const answers=[];
@@ -45,12 +46,21 @@ export function registerTools(pi:ExtensionAPI,get:()=>State,save:()=>void) {
           return {...result(`Input required: ${JSON.stringify(args.questions)}\nWork stopped. Resume this Pi session with your answer; no choice was assumed.`,{question:args}),terminate:true};
         }
         const choices=question.options.map((o:any)=>`${o.label}: ${o.description}`);
+        const other='Other (type an answer)';
         const title=`${question.header}: ${question.question}`;
-        let answer;
+        let answer:string|string[]|undefined;
         if(question.multiSelect) {
-          answer=[];
-          for(const option of choices) if(await ctx.ui.confirm(title,option))answer.push(option);
-        } else answer=await ctx.ui.select(title,choices);
+          const selected:string[]=[];
+          for(const option of choices)if(await ctx.ui.confirm(title,option))selected.push(option);
+          if(await ctx.ui.confirm(title,other)) {
+            const custom=await ctx.ui.input(title,'Type another answer');
+            if(custom?.trim())selected.push(custom.trim());
+          }
+          answer=selected.length?selected:undefined;
+        } else {
+          const selected=await ctx.ui.select(title,[...choices,other]);
+          answer=selected===other?(await ctx.ui.input(title,'Type another answer'))?.trim()||undefined:selected;
+        }
         if(answer===undefined) {s.question=args;save();return {...result('Question unanswered. Resume with your choice.',{question:args}),terminate:true};}
         answers.push({question:question.question,answer});
       }
@@ -68,11 +78,10 @@ export function registerTools(pi:ExtensionAPI,get:()=>State,save:()=>void) {
       recordAuthorization(s,args.kind,scope);save();
       return result(`User authorized ${args.kind} scope ${scope} with the Pi confirmation control. This does not enforce a spending cap.`,{authorized:true,kind:args.kind,scope});
     }});
-  const t=definitions.definitions.create_trackio;
+  const trackio=definitions.definitions.create_trackio;
   const safe={type:'string',pattern:'^[A-Za-z0-9][A-Za-z0-9_.-]*$'};
-  // D13 needs an explicit output owner; upstream's hosted Space tool could infer one.
-  const parameters={...t.parameters,properties:{...t.parameters.properties,project:{...t.parameters.properties.project,...safe,maxLength:80,description:'Safe Trackio project ID (letters, digits, dot, underscore, or hyphen).'},namespace:{...safe,description:'Exact Hub account or organization namespace from the latest successful hf_whoami call.'}},required:['project','namespace']};
-  pi.registerTool({name:t.name,label:'Trackio',description:'Reserve a private metrics dataset for an account or organization returned by a fresh hf_whoami call. No hosted Space or subscription.',parameters:parameters as any,
+  const parameters={...trackio.parameters,properties:{...trackio.parameters.properties,project:{...trackio.parameters.properties.project,...safe,maxLength:80,description:'Safe Trackio project ID (letters, digits, dot, underscore, or hyphen).'},namespace:{...safe,description:'Exact Hub account or organization namespace from the latest successful hf_whoami call.'}},required:['project','namespace']};
+  pi.registerTool({name:'create_trackio',label:'Trackio',description:'Reserve a private metrics dataset for an account or organization returned by a fresh hf_whoami call. No hosted Space or subscription.',parameters:parameters as any,
     async execute(_id,args) {
       const s=get();if(!s.active)throw Error('Enter /ml-intern first.');
       const input=args as Record<string,unknown>;

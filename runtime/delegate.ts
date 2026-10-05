@@ -1,8 +1,7 @@
-import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, SettingsManager, type ExtensionAPI, type ExtensionContext, type AgentToolUpdateCallback } from '@earendil-works/pi-coding-agent';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, SettingsManager, type ExtensionAPI, type ExtensionToolContext, type AgentToolUpdateCallback } from '@earendil-works/pi-coding-agent';
 import { delegatePrompt } from './prompts';
-import { applyBilling, dispatchOutcome, expandFiles } from './contracts';
-import { emptyLifecycle, mergeLifecycle, observeLifecycle } from './lifecycle';
+import { logicalName, nativeName } from './contracts';
 import { sandboxGrammarError } from './policy';
 import * as research from '../upstream/prompts/researchPrompt';
 import * as sandbox from '../upstream/prompts/sandboxPrompt';
@@ -14,50 +13,64 @@ const roles={
   check_job:{tools:['hf_jobs','read'],iterations:8,head:1200,tail:4800,stop:[check.JOB_CHECK_CONTEXT_WARN_PROMPT,check.JOB_CHECK_CONTEXT_MAX_PROMPT,check.JOB_CHECK_ITERATION_LIMIT_PROMPT,check.JOB_CHECK_REPETITION_PROMPT]},
 };
 type Role=keyof typeof roles;
-export function roleError(role:Role,name:string,input:Record<string,any>,handle?:string) {
+export function roleError(role:Role,name:string,input:Record<string,any>,handle?:string,scriptPath?:string,cwd=process.cwd()) {
+  name=logicalName(name);
   if(!roles[role].tools.includes(name))return `Tool ${name} is unavailable to ${role}. Report what you have; the parent owns lifecycle decisions.`;
   if(role==='check_job'&&name==='hf_jobs'&&!['ps','inspect','logs'].includes(input.operation))return 'check_job may only ps, inspect or logs; the parent submits/cancels/waits.';
+  if(role==='check_job'&&name==='read'&&(!scriptPath||typeof input.path!=='string'||resolve(cwd,input.path)!==resolve(cwd,scriptPath)))return 'check_job may read only the immutable script_path supplied by its parent.';
   if(role==='sandbox_task'&&name.startsWith('hf_sandbox_'))return sandboxGrammarError(name,input,handle);
 }
 export function truncate(text:string,head:number,tail:number) {
   return text.length<=head+tail?text:(text.slice(0,head)+'\n...(truncated)...\n'+text.slice(-tail)).toWellFormed();
 }
+export function truncateContent(content:{type:string;text?:string}[],head:number,tail:number) {
+  const text=content.filter(part=>part.type==='text').map(part=>part.text??'').join('\n');
+  const other=content.filter(part=>part.type!=='text');
+  return [...(text?[{type:'text',text:truncate(text,head,tail)}]:[]),...other];
+}
 
-export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>,ctx:ExtensionContext,signal:AbortSignal|undefined,onUpdate?:AgentToolUpdateCallback) {
+export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>,ctx:ExtensionToolContext,signal:AbortSignal|undefined,onUpdate?:AgentToolUpdateCallback) {
   if(!args.task?.trim())throw Error('Supply a specific task.');
   if(role==='sandbox_task'&&!args.handle?.trim())throw Error('Supply an existing sandbox handle.');
   if(role==='check_job'&&!args.job_id?.trim())throw Error('Supply a submitted job ID.');
   if(!ctx.model)throw Error('Select a Pi model before delegating.');
   const spec=roles[role];
   const active=new Set(pi.getActiveTools());
-  const offered=pi.getAllTools().filter(t=>active.has(t.name)&&spec.tools.includes(t.name));
-  const paths=[...new Set(offered.filter(t=>!['read','write','edit'].includes(t.name)).map(t=>t.name.startsWith('github_')?fileURLToPath(new URL('./github.ts',import.meta.url)):t.sourceInfo.path))];
-  if(paths.some(p=>p.startsWith('<')))throw Error('Delegate tools need loadable extension paths. Configure the adapter as a Pi extension, then retry.');
-  if(!offered.some(t=>t.name.startsWith('hf_')))throw Error(`No HF tools available for ${role}. Reconnect the MCP adapter.`);
+  const offered=pi.getAllTools().filter(t=>{
+    const name=logicalName(t.name);
+    const canonical=!(name.startsWith('hf_')||name.startsWith('hub_'))||t.name===nativeName(name);
+    return t.exposure==='direct'&&active.has(t.name)&&canonical&&spec.tools.includes(name)&&!(role==='check_job'&&t.name==='read'&&!args.script_path);
+  });
+  const needed=role==='check_job'?['hf_jobs']:role==='research'?['hf_fs','hub_repo_details']:['hf_sandbox_exec','hf_sandbox_fs'];
+  if(needed.some(name=>!offered.some(tool=>logicalName(tool.name)===name)))throw Error(`Missing active native MCP tools for ${role}. Reconnect hf-intern and retry /ml-intern.`);
   let turns=0,warned=false,forced=false,nudged=false,lengthRetries=0,completionReserve=0;
-  let lifecycle=emptyLifecycle();
   const counts=new Map<string,number>();
   const settingsManager=SettingsManager.inMemory({compaction:{enabled:false},retry:{enabled:true,maxRetries:2}});
   const loader=new DefaultResourceLoader({cwd:ctx.cwd,agentDir:getAgentDir(),settingsManager,noExtensions:true,noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,
-    additionalExtensionPaths:paths,
     systemPromptOverride:()=>delegatePrompt(role,offered.map(t=>t.name)),
     extensionFactories:[child=>{
+      // All tools reuse the parent's implementations and permission pipeline.
+      // No extension files or unrelated MCP servers are loaded in the child.
+      for(const tool of offered) {
+        child.registerTool({name:tool.name,label:logicalName(tool.name),description:tool.description,parameters:tool.parameters as any,
+          async execute(_id,input,childSignal,onUpdate) {
+            const error=roleError(role,tool.name,input as Record<string,any>,args.handle,args.script_path,ctx.cwd);
+            if(error)throw Error(error);
+            const outcome=await ctx.executeTool(tool.name,input,{signal:childSignal,onUpdate});
+            // Nested inference usage is accounted for by the parent's pipeline.
+            return {...outcome.result,usage:undefined,isError:outcome.isError};
+          }});
+      }
       child.on('before_agent_start',()=>child.setActiveTools(offered.map(t=>t.name)));
-      child.on('tool_call',async(event)=>{
+      child.on('tool_call',event=>{
         const input=event.input as Record<string,any>;
-        const error=forced?'Tool budget exhausted; summarize now.':roleError(role,event.toolName,input,args.handle);
+        const error=forced?'Tool budget exhausted; summarize now.':roleError(role,event.toolName,input,args.handle,args.script_path,ctx.cwd);
         if(error)return {block:true,reason:error};
-        applyBilling(event.toolName,input);
-        await expandFiles(event.toolName,input,ctx.cwd);
         const key=event.toolName+JSON.stringify(input,(_k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
         const n=(counts.get(key)??0)+1;counts.set(key,n);
         if(n>=3&&!nudged){nudged=true;child.sendMessage({customType:'ml-delegate-nudge',content:spec.stop[3],display:false},{deliverAs:'steer'});}
       });
-      child.on('tool_result',event=>{
-        if(role==='check_job'&&event.toolName==='hf_jobs'&&dispatchOutcome(event.details,event.isError)==='ok')
-          lifecycle=mergeLifecycle(lifecycle,observeLifecycle(event.toolName,event.input as Record<string,any>,event.content));
-        return {content:event.content.map(c=>c.type==='text'?{...c,text:truncate(c.text,spec.head,spec.tail)}:c)};
-      });
+      child.on('tool_result',event=>({content:truncateContent(event.content,spec.head,spec.tail) as typeof event.content}));
       child.on('turn_end',(event,c)=>{
         turns++;
         onUpdate?.({content:[{type:'text',text:`${role}: ${turns}/${spec.iterations}`}],details:undefined});
@@ -76,8 +89,8 @@ export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>
     }],
   });
   await loader.reload();
-  if(loader.getExtensions().errors.length)throw Error('Delegate extension loading failed. Fix the configured adapter before retrying.');
-  const {session}=await createAgentSession({cwd:ctx.cwd,resourceLoader:loader,settingsManager,sessionManager:SessionManager.inMemory(ctx.cwd),model:ctx.model,thinkingLevel:pi.getThinkingLevel(),tools:spec.tools});
+  if(loader.getExtensions().errors.length)throw Error('Delegate extension loading failed. Fix the configured tools before retrying.');
+  const {session}=await createAgentSession({cwd:ctx.cwd,resourceLoader:loader,settingsManager,sessionManager:SessionManager.inMemory(ctx.cwd),model:ctx.model,thinkingLevel:pi.getThinkingLevel(),tools:offered.map(t=>t.name)});
   // Reuse the parent's configured provider/auth, not a second inference implementation.
   const provider=ctx.modelRegistry.getProvider(ctx.model.provider);
   if(provider)session.modelRuntime.registerNativeProvider(provider);
@@ -89,9 +102,7 @@ export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>
   try {
     signal?.throwIfAborted();
     await session.bindExtensions({mode:'print'});
-    const needed=role==='check_job'?['hf_jobs']:role==='research'?['hf_fs','hub_repo_details']:['hf_sandbox_exec','hf_sandbox_fs'];
-    if(needed.some(n=>!session.getAllTools().some(t=>t.name===n)))throw Error('Delegate is missing direct MCP tools. Connect/discover them in the parent first, then retry.');
-    await session.prompt([args.context&&`Context: ${args.context}`,args.handle&&`Sandbox handle: ${args.handle}`,args.job_id&&`Job id: ${args.job_id}`,`Task: ${args.task}`].filter(Boolean).join('\n\n'));
+    await session.prompt([args.context&&`Context: ${args.context}`,args.handle&&`Sandbox handle: ${args.handle}`,args.job_id&&`Job id: ${args.job_id}`,args.script_path&&`Immutable script path: ${args.script_path}`,`Task: ${args.task}`].filter(Boolean).join('\n\n'));
     signal?.throwIfAborted();
     const last=session.messages.findLast(m=>m.role==='assistant');
     if(last?.role!=='assistant'||['error','aborted','length'].includes(last.stopReason))throw Error(`${role} failed: ${last?.role==='assistant'?last.errorMessage||last.stopReason:'no summary'}. Narrow the task and retry.`);
@@ -102,7 +113,7 @@ export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>
       if(m.role==='assistant')for(const key of ['input','output','cacheRead','cacheWrite','total'] as const)total.cost[key]+=m.usage.cost[key];
       return total;
     },{input:0,output:0,cacheRead:0,cacheWrite:0,totalTokens:0,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}});
-    return {content:[{type:'text' as const,text}],details:{role,turns,lifecycle},usage};
+    return {content:[{type:'text' as const,text}],details:{role,turns},usage};
   } finally {
     signal?.removeEventListener('abort',abort);
     try {await session.extensionRunner.emit({type:'session_shutdown',reason:'quit'});} finally {session.dispose();}
