@@ -79,7 +79,7 @@ it('uses production policy for native discovery, private writes, denied submissi
 it('resumes after command authorization, records uncertain submissions and never replays them',async()=>{
  let turns=0;
  const {session,state,calls}=await setup(context=>{
-  if(!JSON.stringify(context.messages).includes('explicitly recorded allow authorization'))return done('Waiting for authorization.');
+  if(!JSON.stringify(context.messages).includes('Recorded allow authorization for smoke through /ml-intern.'))return done('Waiting for authorization.');
   const previous=context.messages.findLast((m:any)=>m.role==='toolResult');
   switch(turns++) {
    case 0:return tool(hf('hf_jobs'),{operation:'uv',args:{name:'smoke-unknown',script:'file://train.py'}});

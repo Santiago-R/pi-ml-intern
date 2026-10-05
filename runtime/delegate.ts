@@ -43,7 +43,7 @@ export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>
   });
   const needed=role==='check_job'?['hf_jobs']:role==='research'?['hf_fs','hub_repo_details']:['hf_sandbox_exec','hf_sandbox_fs'];
   if(needed.some(name=>!offered.some(tool=>logicalName(tool.name)===name)))throw Error(`Missing active native MCP tools for ${role}. Reconnect hf-intern and retry /ml-intern.`);
-  let turns=0,warned=false,forced=false,nudged=false,lengthRetries=0,completionReserve=0;
+  let turns=0,warned=false,forced=false,nudged=false,lengthRetries=0,completionReserve=0,forcedPrompt:string|undefined;
   const counts=new Map<string,number>();
   const settingsManager=SettingsManager.inMemory({compaction:{enabled:false},retry:{enabled:true,maxRetries:2}});
   const loader=new DefaultResourceLoader({cwd:ctx.cwd,agentDir:getAgentDir(),settingsManager,noExtensions:true,noSkills:true,noPromptTemplates:true,noThemes:true,noContextFiles:true,
@@ -64,7 +64,7 @@ export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>
       child.on('before_agent_start',()=>child.setActiveTools(offered.map(t=>t.name)));
       child.on('tool_call',event=>{
         const input=event.input as Record<string,any>;
-        const error=forced?'Tool budget exhausted; summarize now.':roleError(role,event.toolName,input,args.handle,args.script_path,ctx.cwd);
+        const error=forcedPrompt??roleError(role,event.toolName,input,args.handle,args.script_path,ctx.cwd);
         if(error)return {block:true,reason:error};
         const key=event.toolName+JSON.stringify(input,(_k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
         const n=(counts.get(key)??0)+1;counts.set(key,n);
@@ -81,9 +81,9 @@ export async function delegate(pi:ExtensionAPI,role:Role,args:Record<string,any>
         if(turns>spec.iterations+1){c.abort();return;}
         let prompt;
         if(!forced&&(percent>=95||turns>=spec.iterations)) {
-          forced=true;child.setActiveTools([]);prompt=percent>=95?spec.stop[1]:spec.stop[2];
+          forced=true;child.setActiveTools([]);prompt=percent>=95?spec.stop[1]:spec.stop[2];forcedPrompt=prompt;
         } else if(!warned&&percent>=85){warned=true;prompt=spec.stop[0];}
-        if(event.message.role==='assistant'&&event.message.stopReason==='length'&&lengthRetries++<2)prompt='Your response hit the output limit. Finish the summary now with minimal further reasoning.';
+        if(event.message.role==='assistant'&&event.message.stopReason==='length'&&lengthRetries++<2)prompt='[SYSTEM: Your previous response hit the output limit before it finished. Continue: finish the step or produce the summary now, with minimal further reasoning.]';
         if(prompt)child.sendMessage({customType:'ml-delegate-limit',content:prompt,display:false},{deliverAs:'steer'});
       });
     }],

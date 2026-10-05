@@ -105,6 +105,15 @@ it.each([[28000,'85% of your context budget'],[31000,'CONTEXT LIMIT REACHED']])(
  });
  await delegate(pi,'check_job',{task:'Check',job_id:'job'},ctx,undefined);expect(calls).toBe(2);
 },20000);
+it('uses the upstream output-limit recovery prompt',async()=>{
+ let calls=0;
+ const prompt='[SYSTEM: Your previous response hit the output limit before it finished. Continue: finish the step or produce the summary now, with minimal further reasoning.]';
+ const {pi,ctx}=await setup(context=>{
+  if(calls++===0)return {stopReason:'length',content:[{type:'text',text:'Partial'}]};
+  expect(JSON.stringify(context.messages)).toContain(prompt);return {content:[{type:'text',text:'Finished summary.'}]};
+ });
+ expect((await delegate(pi,'check_job',{task:'Check',job_id:'job'},ctx,undefined)).content[0].text).toBe('Finished summary.');
+},20000);
 it('does not return partial text as success after a provider error',async()=>{
  const {pi,ctx}=await setup(()=>({stopReason:'error',errorMessage:'offline failure',content:[{type:'text',text:'Partial summary'}]}));await expect(delegate(pi,'research',{task:'Research'},ctx,undefined)).rejects.toThrow('offline failure');
 },20000);

@@ -167,7 +167,7 @@ describe('native workflow policy',()=>{
  });
  it('resumes the agent after an explicit authorization command',async()=>{
   const h=harness();await h.command();await h.command('allow smoke experiment');
-  expect(h.pi.sendMessage).toHaveBeenCalledWith(expect.objectContaining({customType:'ml-intern-authorization',content:expect.stringContaining('Continue the pending ML task')}),{triggerTurn:true});
+  expect(h.pi.sendMessage).toHaveBeenCalledWith({customType:'ml-intern-authorization',content:'Recorded allow authorization for smoke experiment through /ml-intern.',display:true},{triggerTurn:true});
   expect(h.state().allowance).toBe('smoke experiment');
  });
  it('does not authorize from headless chat text or denied confirmation',async()=>{
